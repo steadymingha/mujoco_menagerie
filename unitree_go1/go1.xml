@@ -17,8 +17,10 @@
         <position ctrlrange="-0.686 4.501"/>
       </default>
       <default class="knee">
-        <joint range="-2.818 -0.888"/>
-        <position forcerange="-35.55 35.55" ctrlrange="-2.818 -0.888"/>
+<!--        <joint range="-2.818 -0.888"/>-->
+<!--        <position forcerange="-35.55 35.55" ctrlrange="-2.818 -0.888"/>-->
+        <joint range="-2.818 0"/>
+        <position forcerange="-35.55 35.55" ctrlrange="-2.818 0"/>
       </default>
       <default class="visual">
         <geom type="mesh" contype="0" conaffinity="0" group="2" material="dark"/>
