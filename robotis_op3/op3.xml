@@ -1,9 +1,9 @@
 <mujoco model="robotis_op3">
-
   <compiler angle="radian" meshdir="assets" autolimits="true"/>
 
   <asset>
     <material name="black" rgba="0.2 0.2 0.2 1"/>
+
     <mesh file="body.stl"/>
     <mesh file="ll1.stl"/>
     <mesh file="ll2.stl"/>
@@ -72,7 +72,7 @@
   </default>
 
   <worldbody>
-    <light name="spotlight" mode="targetbodycom" target="body_link" pos="0 -1 2"/>
+    <light mode="targetbodycom" target="body_link" pos="4 0 1"/>
     <body name="body_link" pos="0 0 0.3">
       <inertial pos="-0.01501 0.00013 0.06582" quat="0.704708 0.704003 0.0667707 -0.0575246" mass="1.34928"
         diaginertia="0.00341264 0.00316574 0.00296931"/>
@@ -260,5 +260,4 @@
     <position name="r_ank_pitch_act" joint="r_ank_pitch"/>
     <position name="r_ank_roll_act" joint="r_ank_roll"/>
   </actuator>
-
 </mujoco>

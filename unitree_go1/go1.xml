@@ -17,10 +17,8 @@
         <position ctrlrange="-0.686 4.501"/>
       </default>
       <default class="knee">
-<!--        <joint range="-2.818 -0.888"/>-->
-<!--        <position forcerange="-35.55 35.55" ctrlrange="-2.818 -0.888"/>-->
-        <joint range="-2.818 0"/>
-        <position forcerange="-35.55 35.55" ctrlrange="-2.818 0"/>
+        <joint range="-2.818 -0.888"/>
+        <position forcerange="-35.55 35.55" ctrlrange="-2.818 -0.888"/>
       </default>
       <default class="visual">
         <geom type="mesh" contype="0" conaffinity="0" group="2" material="dark"/>
@@ -61,7 +59,7 @@
           <geom size="0.01" fromto="0.02 0 -0.13 0 0 -0.2"/>
         </default>
         <default class="foot">
-          <geom type="sphere" size="0.023" pos="0 0 -0.213" priority="1" solimp="0.015 1 0.031" condim="6"
+          <geom type="sphere" size="0.023" pos="0 0 -0.213" priority="1" solimp="0.015 1 0.023" condim="6"
             friction="0.8 0.02 0.01"/>
         </default>
       </default>
@@ -69,7 +67,7 @@
   </default>
 
   <asset>
-    <material name="dark" rgba="0.1 0.1 0.1 1"/>
+    <material name="dark" rgba="0.2 0.2 0.2 1"/>
     <mesh class="go1" file="trunk.stl"/>
     <mesh class="go1" file="hip.stl"/>
     <mesh class="go1" file="thigh_mirror.stl"/>
@@ -227,5 +225,4 @@
     <key name="home" qpos="0 0 0.27 1 0 0 0 0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8"
       ctrl="0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8 0 0.9 -1.8"/>
   </keyframe>
-
 </mujoco>

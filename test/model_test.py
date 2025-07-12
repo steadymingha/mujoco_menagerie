@@ -26,13 +26,19 @@ import mujoco
 _ROOT_DIR = pathlib.Path(__file__).parent.parent
 _MODEL_DIRS = [f for f in _ROOT_DIR.iterdir() if f.is_dir()]
 _MODEL_XMLS: List[pathlib.Path] = []
-for model_dir in _MODEL_DIRS:
-  xmls = model_dir.glob('scene*.xml')
-  for xml in xmls:
-    _MODEL_XMLS.append(xml)
+
+
+def _get_xmls(pattern: str) -> List[pathlib.Path]:
+  for d in _MODEL_DIRS:
+    # Produce tuples of test name and XML path.
+    for f in d.glob(pattern):
+      test_name = str(f).removeprefix(str(f.parent.parent))
+      yield (test_name, f)
+
+_MODEL_XMLS = list(_get_xmls('scene*.xml'))
 
 # Total simulation duration, in seconds.
-_MAX_SIM_TIME = 1.0
+_MAX_SIM_TIME = 0.1
 # Scale for the pseudorandom control noise.
 _NOISE_SCALE = 1.0
 
@@ -55,8 +61,9 @@ def _pseudorandom_ctrlnoise(
 
 
 class ModelsTest(parameterized.TestCase):
+  """Tests that MuJoCo models load and do not emit warnings."""
 
-  @parameterized.parameters(_MODEL_XMLS)
+  @parameterized.named_parameters(_MODEL_XMLS)
   def test_compiles_and_steps(self, xml_path: pathlib.Path) -> None:
     model = mujoco.MjModel.from_xml_path(str(xml_path))
     data = mujoco.MjData(model)

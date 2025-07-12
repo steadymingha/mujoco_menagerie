@@ -1,11 +1,16 @@
 # Unitree Go1 Description (MJCF)
 
-Requires MuJoCo 2.2.2 or later.
+> [!IMPORTANT]
+> Requires MuJoCo 2.2.2 or later.
+
+## Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md) for a full history of changes.
 
 ## Overview
 
 This package contains a simplified robot description (MJCF) of the [Go1
-Quadruped Robot](https://www.unitree.com/products/go1/) developed by [Unitree
+Quadruped Robot](https://www.unitree.com/go1/) developed by [Unitree
 Robotics](https://www.unitree.com/). It is derived from the [publicly available
 URDF
 description](https://github.com/unitreerobotics/unitree_ros/tree/master/robots/go1_description).
