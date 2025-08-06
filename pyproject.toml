@@ -1,0 +1,18 @@
+[project]
+name = "new-mujoco-menagerie"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "dm-control>=1.0.31",
+    "jax>=0.7.0",
+    "jupyterlab>=4.4.4",
+    "matplotlib>=3.10.3",
+    "mdutils>=1.8.0",
+    "mediapy>=1.2.4",
+    "mujoco>=3.3.4",
+    "numpy>=2.3.1",
+    "opencv-python>=4.11.0.86",
+    "tqdm>=4.67.1",
+]
