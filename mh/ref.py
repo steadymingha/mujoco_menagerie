@@ -30,10 +30,10 @@ j = {
 def main():
     # 모델 로드
     # MODEL_XML = "unitree_go1/scene.xml"
-    MODEL_XML = "/Users/mhlee/study/mujoco_menagerie/unitree_go1/go_inverted.xml"
-    pose_data = "dog_pace.npy"
+    MODEL_XML = "unitree_go2/scene_mjx.xml"
+    # pose_data = "dog_pace.npy"
     # [right_front_thigh_angle, right_front_calf_angle, right_rear_thigh_angle, right_rear_calf_angle]
-    poses = np.load(pose_data)
+    # poses = np.load(pose_data)
     # mujoco.MjsCamera.targetbody
     model = mujoco.MjModel.from_xml_path(MODEL_XML)
 
@@ -45,12 +45,12 @@ def main():
     # viewer.cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
     # viewer._render_every_frame = False
     viewer.cam.type = mujoco.mjtCamera.mjCAMERA_TRACKING
-    viewer.cam.trackbodyid = model.body("trunk").id  # 따라갈 바디 지정
+    viewer.cam.trackbodyid = model.body("base").id  # 따라갈 바디 지정
     viewer.cam.distance = 3.0  # 카메라와 바디 사이 거리
 
-    qpos = data.qpos  # 상태 변수
-    qpos[3:7] = [0,1, 0, 0]  # 쿼터니언 (x축 90도 회전)
-    data.qpos[:] = qpos  # 초기 상태 적용
+    # qpos = data.qpos  # 상태 변수
+    # qpos[3:7] = [0,1, 0, 0]  # 쿼터니언 (x축 90도 회전)
+    # data.qpos[:] = qpos  # 초기 상태 적용
 
     # 모니터링할 관절 이름 설정
     # joint_name = "FR_thigh_joint"  # 예: "FR_hip_joint"
@@ -66,19 +66,21 @@ def main():
     except mujoco.Error:
         print(f"Joint '{joint_name}' not found in the model.")
 
-
+    cnt = 0
     while viewer.is_alive:
-        # if cnt % 5 == 0:
-        #     data.ctrl[j["RF_thigh"]] = pace_data[alive_flag][0]
-        #     data.ctrl[j["RF_calf"]] = pace_data[alive_flag][1] *2
-        #     data.ctrl[j["RR_thigh"]] = pace_data[alive_flag][2]
-        #     data.ctrl[j["RR_calf"]] = pace_data[alive_flag][3] *2
-        #     data.ctrl[j["LF_thigh"]] = pace_data[alive_flag][4]
-        #     data.ctrl[j["LF_calf"]] = pace_data[alive_flag][5] *2
-        #     data.ctrl[j["LR_thigh"]] = pace_data[alive_flag][6]
-        #     data.ctrl[j["LR_calf"]] = pace_data[alive_flag][7]   *2
+        if cnt % 5 == 0:
+            # data.ctrl[j["RF_thigh"]] = pace_data[alive_flag][0]
+            # data.ctrl[j["RF_calf"]] = pace_data[alive_flag][1] *2
+            # data.ctrl[j["RR_thigh"]] = pace_data[alive_flag][2]
+            # data.ctrl[j["RR_calf"]] = pace_data[alive_flag][3] *2
+            # data.ctrl[j["LF_thigh"]] = pace_data[alive_flag][4]
+            # data.ctrl[j["LF_calf"]] = pace_data[alive_flag][5] *2
+            # data.ctrl[j["LR_thigh"]] = pace_data[alive_flag][6]
+            # data.ctrl[j["LR_calf"]] = pace_data[alive_flag][7]   *2
 
         mujoco.mj_step(model, data)
+        viewer.render()
+        cnt += 1
 
 
 
