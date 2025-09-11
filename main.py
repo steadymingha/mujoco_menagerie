@@ -3,8 +3,10 @@
 # 2. leg and body control
 # 3. State Estimation
 
+# p dot = CoM translational vel
+# psi dot = CoM turning rate
 
-class HighLevelPlanning():
+class HighLevelPlanning:
     def __init__(self):
         pass
     def desired_CoM_cmd(self,psi_dot,p_dot):
@@ -13,7 +15,7 @@ class HighLevelPlanning():
     def gait_scheduler(self):
         pass
 
-class Controller():
+class Controller:
     def __init__(self):
         pass
     def force_controller(self):
@@ -25,7 +27,7 @@ class Controller():
         pass
 
 
-class StateObserver():
+class StateObserver:
     def __init__(self):
         pass
     def CoM_state(self): # KF
@@ -33,6 +35,17 @@ class StateObserver():
     def leg_contact_detector(self):
         pass
 
+class Cheetah:
+    def __init__(self):
+        pass
+
+    def force_model(self):
+        pass
+    def p_psi_to_torque(self):
+        #jacobian transpose
+        pass
 
 
 
+if __name__ == "__main__":
+    main()
