@@ -48,4 +48,18 @@ class Cheetah:
 
 
 if __name__ == "__main__":
-    main()
+    import mujoco
+    import numpy as np
+
+    xml_path = '/home/user/fun/mujoco_menagerie/unitree_go2/go2_mjx.xml'
+    model = mujoco.MjModel.from_xml_path(xml_path)
+    data = mujoco.MjData(model)
+
+    for i in range(19):
+        mujoco.mj_step(model, data)
+
+        orientation_data = data.sensor('orientation').data
+        position_data = data.sensor('global_position').data
+
+        print(f"Orientation (Quaternion): {orientation_data}")
+        print(f"Global Position (x, y, z): {position_data}")
