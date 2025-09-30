@@ -46,12 +46,12 @@ class Cheetah:
         pass
 
 
-
+## leg-independent phase variable to schedule nominal contact and swing phases.
 if __name__ == "__main__":
     import mujoco
     import numpy as np
 
-    xml_path = '/home/user/fun/mujoco_menagerie/unitree_go2/go2_mjx.xml'
+    xml_path = './unitree_go2/go2_mjx.xml'
     model = mujoco.MjModel.from_xml_path(xml_path)
     data = mujoco.MjData(model)
 
