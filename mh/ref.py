@@ -68,7 +68,7 @@ def main():
 
     cnt = 0
     while viewer.is_alive:
-        if cnt % 5 == 0:
+        # if cnt % 5 == 0:
             # data.ctrl[j["RF_thigh"]] = pace_data[alive_flag][0]
             # data.ctrl[j["RF_calf"]] = pace_data[alive_flag][1] *2
             # data.ctrl[j["RR_thigh"]] = pace_data[alive_flag][2]
@@ -77,7 +77,6 @@ def main():
             # data.ctrl[j["LF_calf"]] = pace_data[alive_flag][5] *2
             # data.ctrl[j["LR_thigh"]] = pace_data[alive_flag][6]
             # data.ctrl[j["LR_calf"]] = pace_data[alive_flag][7]   *2
-
         mujoco.mj_step(model, data)
         viewer.render()
         cnt += 1

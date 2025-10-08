@@ -16,6 +16,7 @@ def get_current_phase(t0, t, T):
     return phi, s_phi
 
 def expected_contact_prob(): #  probabilistic model for the expectation of contact given the scheduled leg state & subphase during stance
+    ## model parameter ##
     mean_cbar = np.array([0, 1])
     var_cbar_sq = 0.05
     mean_c = np.array([0, 1])
@@ -23,9 +24,9 @@ def expected_contact_prob(): #  probabilistic model for the expectation of conta
 
     phi, s_phi = get_current_phase(t0, t, T)
     
-    if s_phi:
+    if s_phi: # stance state (0)
         prior_p = 0.5 * (erf((phi-mean_c[0])/math.sqrt(var_c_sq*2)) + erf((mean_c[1]-phi)/math.sqrt(var_c_sq*2)))
-    else:
+    else: # swing state(1)
         prior_p = 0.5 * (2 + erf((mean_cbar[0]-phi)/math.sqrt(var_cbar_sq*2)) + erf((phi-mean_cbar[1])/math.sqrt(var_cbar_sq*2)))
     
     return prior_p
@@ -41,12 +42,12 @@ def get_foot_contact_force():
 def get_ground_height():
     return g_h
 
-def kalman_filter(z_meas, x_esti, P, A, H, Q, R):
+def kalman_filter(z_meas, x_esti, P, A, H, Q, R, B, u):
     """Kalman Filter Algorithm for One Variable.
        Return Kalman Gain for Drawing.
     """
     # (1) Prediction.
-    x_pred = A * x_esti
+    x_pred = A * x_esti + B * u
     P_pred = A * P * A + Q
 
     # (2) Kalman Gain.
@@ -70,11 +71,12 @@ def main():
     H = 1
     Q = 0
     R = 4
+    B = np.eye(4)
     
     # Initialization for estimation.
-    x_0 = 12  # 14 for book.
-    P_0 = 6
-    K_0 = 1
+    x_0 = np.array([0., 0., 0., 0.])  # 14 for book.
+    P_0 = np.eye(4)*0.1
+    K_0 = np.eye(4)
 
     # Create time array and initialize storage arrays
     time = np.arange(0, time_end, dt)
@@ -87,11 +89,12 @@ def main():
     # Run Kalman filter
     x_esti, P, K = None, None, None
     for i in range(n_samples):
+        u = expected_contact_prob()
         z_meas = get_foot_contact_prob()
         if i == 0:
             x_esti, P, K = x_0, P_0, K_0
         else:
-            x_esti, P, K = kalman_filter(z_meas, x_esti, P, A, H, Q, R)
+            x_esti, P, K = kalman_filter(z_meas, x_esti, P, A, H, Q, R, B, u)
 
         poc_meas_save[i] = z_meas
         poc_esti_save[i] = x_esti
