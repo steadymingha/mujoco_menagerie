@@ -90,7 +90,8 @@ def main():
     x_esti, P, K = None, None, None
     for i in range(n_samples):
         u = expected_contact_prob()
-        z_meas = get_foot_contact_prob()
+        z_1 = get_ground_height()
+        z_2 = 
         if i == 0:
             x_esti, P, K = x_0, P_0, K_0
         else:
