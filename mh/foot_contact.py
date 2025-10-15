@@ -41,6 +41,7 @@ def get_foot_contact_force():
 
 def get_ground_height():
     return g_h
+def get_contact_force():
 
 def kalman_filter(z_meas, x_esti, P, A, H, Q, R, B, u):
     """Kalman Filter Algorithm for One Variable.

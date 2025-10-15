@@ -55,11 +55,13 @@ if __name__ == "__main__":
     model = mujoco.MjModel.from_xml_path(xml_path)
     data = mujoco.MjData(model)
 
-    for i in range(19):
+    for i in range(100):
         mujoco.mj_step(model, data)
 
         orientation_data = data.sensor('orientation').data
         position_data = data.sensor('global_position').data
+        print(f"joint sensor data test {data.sensor('knee_front_left_pos').data[0]}")
+        print(f"joint sensor data test {data.joint('FL_calf_joint').qpos[0]}")
 
-        print(f"Orientation (Quaternion): {orientation_data}")
-        print(f"Global Position (x, y, z): {position_data}")
+        # print(f"Orientation (Quaternion): {orientation_data}")
+        # print(f"Global Position (x, y, z): {position_data}")
