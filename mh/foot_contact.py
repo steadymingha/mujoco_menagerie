@@ -31,16 +31,26 @@ def expected_contact_prob(): #  probabilistic model for the expectation of conta
     
     return prior_p
 
-def get_foot_contact_force():
+def get_foot_contact_force(mjc):
     # """Measure pocage."""
     # v = np.random.normal(0, 2)   # v: measurement noise.
     # poc_true = 14.4             # poc_true: True pocage [V].
     # z_poc_meas = poc_true + v  # z_poc_meas: Measured pocage [V] (observable).
+    theta_abduction = d.joint('FL_hip_joint').qpos[0]
+    theta_hip = d.joint('FL_thigh_joint').qpos[0]
+    theta_knee = d.joint('FL_calf_joint').qpos[0]
 
+    # 2. 1단계: Sagittal plane (옆에서 본) Z 높이 계산
+    z_side = -L_THIGH * np.cos(theta_hip) - L_CALF * np.cos(theta_hip + theta_knee)
+
+    # 3. 2단계: Abduction 효과를 적용하여 최종 Z 높이 계산
+    z_final = z_side * np.cos(theta_abduction) + Y_OFFSET * np.sin(theta_abduction)
+    
     return z_poc_meas
 
-def get_ground_height():
-    return g_h
+def get_foot_height():
+
+    return foot_height
 def get_contact_force():
 
 def kalman_filter(z_meas, x_esti, P, A, H, Q, R, B, u):
