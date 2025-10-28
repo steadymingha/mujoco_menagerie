@@ -1,5 +1,6 @@
 import numpy as np
 import mujoco
+from typing import Tuple
 
 # --- 사전 설정 ---
 # 모델 로드
@@ -7,10 +8,12 @@ xml_path = './unitree_go2/go2_mjx.xml'
 model = mujoco.MjModel.from_xml_path(xml_path) # go2.xml 파일 경로
 data = mujoco.MjData(model)
 
-# 링크 길이 등 상수 정의
+# 상수 정의
+X_BASE_OFFSET = 0.1934
+Y_BASE_OFFSET = 0.0465
+Y_OFFSET = 0.0955
 L_THIGH = 0.213
 L_CALF = 0.213
-Y_OFFSET = 0.0955
 
 def calculate_fl_foot_z(d: mujoco.MjData) -> float:
     """
@@ -36,6 +39,38 @@ def calculate_fl_foot_z(d: mujoco.MjData) -> float:
     
     return z_final
 
+def calculate_fl_foot_pos(d: mujoco.MjData) -> Tuple[float, float, float]:
+    """
+    MuJoCo data를 기반으로 FL(앞 왼쪽) 다리 발끝의
+    3D 위치 (X, Y, Z)를 계산합니다. (몸통 base 좌표계 기준)
+
+    Args:
+        d: MuJoCo의 MjData 객체
+
+    Returns:
+        (x, y, z) 위치를 담은 튜플
+    """
+    # 1. 시뮬레이션에서 현재 관절 각도를 가져옵니다.
+    theta_abduction = d.joint('FL_hip_joint').qpos[0]
+    theta_hip = d.joint('FL_thigh_joint').qpos[0]
+    theta_knee = d.joint('FL_calf_joint').qpos[0]
+
+    # 삼각함수 값 미리 계산 (효율성)
+    s1 = np.sin(theta_abduction)
+    c1 = np.cos(theta_abduction)
+    s2 = np.sin(theta_hip)
+    c2 = np.cos(theta_hip)
+    s23 = np.sin(theta_hip + theta_knee)
+    c23 = np.cos(theta_hip + theta_knee)
+
+    # 2. X, Y, Z 위치 계산
+    foot_x = X_BASE_OFFSET - L_THIGH * s2 - L_CALF * s23
+    
+    z_side = -L_THIGH * c2 - L_CALF * c23
+    foot_y = Y_BASE_OFFSET + Y_OFFSET * c1 - z_side * s1
+    foot_z = Y_OFFSET * s1 + z_side * c1
+    
+    return (foot_x, foot_y, foot_z)
 
 def quat_to_rot_matrix(q):
     """
@@ -80,6 +115,10 @@ if __name__ == "__main__":
     for i in range(1000):
         mujoco.mj_step(model, data)
         
+                
+        #   # 현재 스텝의 FL 발끝 3D 위치 계산 및 출력
+        #   x, y, z = calculate_fl_foot_pos(data)
+        #   print(f"FL foot position: (X={x:.4f}, Y={y:.4f}, Z={z:.4f})")
         # 현재 스텝의 FL 발끝 Z 높이 계산 및 출력
         foot_z = calculate_fl_foot_z(data)
         print(f"FL foot Z height: {foot_z:.4f}")
@@ -120,3 +159,10 @@ if __name__ == "__main__":
         print("-" * 30)
         print(f"최종 발 위치 (World): {np.round(p_foot_world, 5)}")
         print(f"World 기준 최종 발 높이(z): {np.round(p_foot_world[2], 5)}")
+
+
+
+
+
+
+
