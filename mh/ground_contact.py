@@ -1,4 +1,5 @@
 import numpy as np
+import math
 
 class ContactModel:
     def __init__(self):
@@ -75,6 +76,12 @@ class ContactModel:
         
         return prior_p
     
-    def prob_contact_given_foot_height(self, fh):
+    def prob_contact_given_foot_height(self, pz):
+        mean_zg = 0 # mu
+        var_zg = math.sqrt(0.1) # sigma
+
+        p_c_pz = 0.5 * (1 + erf((mean_zg-pz)/(var_zg*math.sqrt(2))))
+
+        return p_c_pz
 
 

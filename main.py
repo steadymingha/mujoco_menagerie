@@ -62,5 +62,11 @@ if __name__ == "__main__":
         position_data = data.sensor('global_position').data
         print(f"joint sensor data test {data.sensor('knee_front_left_pos').data}")
 
+
+        p_body_world = data.body('base').xpos 
+        q_body_world = data.body('base').xquat
+        print(f"{p_body_world} are world base coords")
+        print(f"{q_body_world} are world quaternion coords")
         # print(f"Orientation (Quaternion): {orientation_data}")
         # print(f"Global Position (x, y, z): {position_data}")
+        print("==========================================")

@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import os
 from scipy.special import erf
 import mujoco
-from foot_height import quat_to_rot_matrix
+from foot_mechanics import quat_to_rot_matrix
 
 THRESHOLD = 0.6
 # 링크 길이 등 상수 정의
