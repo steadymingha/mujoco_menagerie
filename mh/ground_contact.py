@@ -27,14 +27,15 @@ class ContactModel:
         self.z1, self.z2 = np.zeros((n,1)), np.zeros((n,1))
         self.z = np.block([[self.z1],[self.z2]])
 
-    def update(self):
+    def update(self, foot_height, foot_force):
         self.u = self.prediction_prob_model()   #prob_contact_given_state_subphase
-        self.z1 = self.prob_contact_given_foot_height()
-        self.z2 = self.prob_contact_given_contact_force()
+        self.z1 = self.prob_contact_given_foot_height(foot_height)
+        self.z2 = self.prob_contact_given_contact_force(foot_force)
 
-    def prob_contact(self):
+
+    def prob_contact(self, foot_height, foot_force):
         # model update
-        self.update()
+        self.update(foot_height, foot_force)
 
         # (1) Prediction.
         x_pred = self.A @ x_esti + self.B @ self.u
@@ -51,7 +52,7 @@ class ContactModel:
 
     def get_current_phase(t0, t, T):
         phi0 = (t-t0)/T # [0,1)
-        phi = np.array([phi0, phi0+])
+        phi = np.array([phi0, phi0])
 
         if phi < THRESHOLD:
             s_phi = 0
@@ -84,4 +85,5 @@ class ContactModel:
 
         return p_c_pz
 
-
+    def prob_contact_given_contact_force(self, fz):
+        return 0

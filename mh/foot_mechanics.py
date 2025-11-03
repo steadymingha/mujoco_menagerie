@@ -109,7 +109,30 @@ class FootHeight:
 
 class FootForce:
     def __init__(self):
-        pass
+        self.y_pre = 0
+    
+    def get_foot_force(self, model, data):
+        gamma = 0.828 # 0~1
+        beta = 103.7
+        S_T = np.block([[np.zeros([6,12])], [np.eye(12)]])
+        M = np.zeros((model.nv, model.nv))
+        mujoco.mj_fullM(model, M, data.qM)
+        
+        ## disturbance torque
+
+        dyn_terms = beta*p + S_T*tau + C.T*q_dot - g #filtered dynamic effect
+        
+        y = (1-gamma) * dyn_terms + gamma * y_pre
+
+        tau_d = beta * p
+        
+
+
+        # save current value
+        y_pre = y
+
+
+
 
     
 if __name__ == "__main__":
