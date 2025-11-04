@@ -10,14 +10,19 @@ Y_OFFSET = 0.0955
 L_THIGH = 0.213
 L_CALF = 0.213
 
+# 다리 위치 리스트
+LEGS = ['front_left', 'front_right', 'hind_left', 'hind_right']
+# 관절 유형 리스트
+JOINTS = ['abduction', 'hip', 'knee']
+
 class FootHeight:
     def __init__(self):
         pass
     def cal_foot_body_position(self, data):
-        # 다리 위치 리스트
-        LEGS = ['front_left', 'front_right', 'hind_left', 'hind_right']
-        # 관절 유형 리스트
-        JOINTS = ['abduction', 'hip', 'knee']
+        # # 다리 위치 리스트
+        # LEGS = ['front_left', 'front_right', 'hind_left', 'hind_right']
+        # # 관절 유형 리스트
+        # JOINTS = ['abduction', 'hip', 'knee']
         # 결과 딕셔너리
         joint_data = {}
 
@@ -111,36 +116,45 @@ class FootForce:
     def __init__(self):
         self.y_pre = 0
         self.tau = 0
+        self.M = np.zeros((model.nv, model.nv))
     
     def get_foot_force(self, model, data, torque):
         gamma = 0.828 # 0~1
         beta = 103.7
+        
         S_T = np.block([[np.zeros([6,12])], [np.eye(12)]])
-        M = np.zeros((model.nv, model.nv))
-        mujoco.mj_fullM(model, M, data.qM)
-        # self.tau should be 18x1 [????..12 / ooooo..12]
 
+        ### p = mv (Mq_dot) ###        
+        mujoco.mj_fullM(model, self.M, data.qM)
+        joint_angle_list = [
+            data.sensor(f'{joint}_{leg}_vel').data[0]
+            for joint in JOINTS
+            for leg in LEGS  
+        ]
+        joint_angle_data = np.array(joint_angle_list)[:, np.newaxis]
+
+        q_dot = np.vstack((data.sensor('global_linvel').data[:, np.newaxis],
+                          data.sensor('global_angvel').data[:, np.newaxis],
+                          joint_angle_data))
+
+        p = self.M @ q_dot
+        
+        ### C^T *q_dot - g ###
         mujoco.mj_inverse(model, data)
-        Coriolis_gravity = data.qfrc_bias
+        coriolis_gravity = data.qfrc_bias[:, np.newaxis] # 18x1
         
-        
-        ## disturbance torque
-
+        ## Dynamic effects for Disturbance torque
         dyn_terms = beta*p + S_T*self.tau + C.T*q_dot - g #filtered dynamic effect
-        
         y = (1-gamma) * dyn_terms + gamma * self.y_pre
-
-        tau_d = beta * p
         
-
-
-        # save current value
+        ## final disturbance torque
+        tau_d = beta * p - y
+        
+        # save current value for next loop
         self.y_pre = y
         self.tau = torque
 
-
-
-
+        return tau_d
     
 if __name__ == "__main__":
     # --- 시뮬레이션 루프 (예시) ---
@@ -152,55 +166,78 @@ if __name__ == "__main__":
 
     fh = FootHeight()
 
-    for i in range(100):
+    for i in range(2):
         mujoco.mj_step(model, data)
+        print(data.qfrc_bias)
+        print("=========================")
+        mujoco.mj_inverse(model, data)
+        coriolis_gravity = data.qfrc_bias
+        print(coriolis_gravity)
+        print("=========================")
+        print(coriolis_gravity.shape)
+
+        joint_angle_list = [
+            data.sensor(f'{joint}_{leg}_vel').data[0]
+            for joint in JOINTS
+            for leg in LEGS  # for 문 순서에 따라 데이터 나열 순서가 결정됩니다.
+        ]
+
+        joint_angle_data = np.array(joint_angle_list)[:, np.newaxis]
+
+
+        q_dot = np.vstack((data.sensor('global_linvel').data[:, np.newaxis],
+                          data.sensor('global_angvel').data[:, np.newaxis],
+                          joint_angle_data))
+        
+        test = 0
+
         
                 
-        #   # 현재 스텝의 FL 발끝 3D 위치 계산 및 출력
-        #   x, y, z = calculate_fl_foot_pos(data)
-        #   print(f"FL foot position: (X={x:.4f}, Y={y:.4f}, Z={z:.4f})")
-        # 현재 스텝의 FL 발끝 Z 높이 계산 및 출력
-        foot_z = fh.calculate_fl_foot_z(data)
-        print(f"FL foot Z height: {foot_z:.4f}")
+        # #   # 현재 스텝의 FL 발끝 3D 위치 계산 및 출력
+        # #   x, y, z = calculate_fl_foot_pos(data)
+        # #   print(f"FL foot position: (X={x:.4f}, Y={y:.4f}, Z={z:.4f})")
+        # # 현재 스텝의 FL 발끝 Z 높이 계산 및 출력
+        # foot_z = fh.calculate_fl_foot_z(data)
+        # print(f"FL foot Z height: {foot_z:.4f}")
 
         
-        # --- 예제 및 결과 확인 ---
-        # 예시: Z축을 기준으로 90도(pi/2 라디안) 회전하는 쿼터니언
-        # w = cos(theta/2), (x,y,z) = sin(theta/2) * (axis_x, axis_y, axis_z)
-        # theta = pi/2 -> theta/2 = pi/4
-        # w = cos(pi/4) = 0.7071...
-        # x = sin(pi/4) * 0 = 0
-        # y = sin(pi/4) * 0 = 0
-        # z = sin(pi/4) * 1 = 0.7071...
-        # World 좌표계 기준 'base' 몸통의 위치 벡터
-        p_body_world = np.array([0.5, 1.0, 0.4]) 
-        # p_body_world = data.body('base').xpos
+        # # --- 예제 및 결과 확인 ---
+        # # 예시: Z축을 기준으로 90도(pi/2 라디안) 회전하는 쿼터니언
+        # # w = cos(theta/2), (x,y,z) = sin(theta/2) * (axis_x, axis_y, axis_z)
+        # # theta = pi/2 -> theta/2 = pi/4
+        # # w = cos(pi/4) = 0.7071...
+        # # x = sin(pi/4) * 0 = 0
+        # # y = sin(pi/4) * 0 = 0
+        # # z = sin(pi/4) * 1 = 0.7071...
+        # # World 좌표계 기준 'base' 몸통의 위치 벡터
+        # p_body_world = np.array([0.5, 1.0, 0.4]) 
+        # # p_body_world = data.body('base').xpos
 
-        # World 좌표계 기준 'base' 몸통의 방향 (Z축 90도 회전 쿼터니언)
-        q_body_world = np.array([0.7071, 0, 0, 0.7071])
-        p_body_world = data.body('base').xpos 
-        q_body_world = data.body('base').xquat
-        # Body 좌표계 기준 발의 위치 벡터 (사용자가 계산한 값)
-        p_foot_body = np.array([0.19, 0.15, -0.3])
-
-
-        # 2. 쿼터니언을 회전 행렬로 변환 (위에서 만든 함수 사용)
-        rot_matrix = fh.quat_to_rot_matrix(q_body_world)
-
+        # # World 좌표계 기준 'base' 몸통의 방향 (Z축 90도 회전 쿼터니언)
+        # q_body_world = np.array([0.7071, 0, 0, 0.7071])
+        # p_body_world = data.body('base').xpos 
         # q_body_world = data.body('base').xquat
-        # 3. 최종 변환 수식 적용하여 World 좌표 계산 (지적해주신 바로 그 부분!)
-        p_foot_world = p_body_world + rot_matrix @ p_foot_body
+        # # Body 좌표계 기준 발의 위치 벡터 (사용자가 계산한 값)
+        # p_foot_body = np.array([0.19, 0.15, -0.3])
 
 
-        # 4. 결과 출력
-        print(f"Body 위치 (World): {p_body_world}")
-        print(f"발 위치 (Body):    {p_foot_body}")
-        print("-" * 30)
-        # print("계산된 회전 행렬:")
-        # print(np.round(rot_matrix, 5))
-        print("-" * 30)
-        print(f"최종 발 위치 (World): {np.round(p_foot_world, 5)}")
-        print(f"World 기준 최종 발 높이(z): {np.round(p_foot_world[2], 5)}")
+        # # 2. 쿼터니언을 회전 행렬로 변환 (위에서 만든 함수 사용)
+        # rot_matrix = fh.quat_to_rot_matrix(q_body_world)
+
+        # # q_body_world = data.body('base').xquat
+        # # 3. 최종 변환 수식 적용하여 World 좌표 계산 (지적해주신 바로 그 부분!)
+        # p_foot_world = p_body_world + rot_matrix @ p_foot_body
+
+
+        # # 4. 결과 출력
+        # print(f"Body 위치 (World): {p_body_world}")
+        # print(f"발 위치 (Body):    {p_foot_body}")
+        # print("-" * 30)
+        # # print("계산된 회전 행렬:")
+        # # print(np.round(rot_matrix, 5))
+        # print("-" * 30)
+        # print(f"최종 발 위치 (World): {np.round(p_foot_world, 5)}")
+        # print(f"World 기준 최종 발 높이(z): {np.round(p_foot_world[2], 5)}")
 
 
 
