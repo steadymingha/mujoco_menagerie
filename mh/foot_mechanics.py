@@ -141,10 +141,10 @@ class FootForce:
         
         ### C^T *q_dot - g ###
         mujoco.mj_inverse(model, data)
-        coriolis_gravity = data.qfrc_bias[:, np.newaxis] # 18x1
+        coriolis_gravity = data.qfrc_bias[:, np.newaxis] # 18x1  C.T*q_dot - g 
         
         ## Dynamic effects for Disturbance torque
-        dyn_terms = beta*p + S_T*self.tau + C.T*q_dot - g #filtered dynamic effect
+        dyn_terms = beta*p + S_T*self.tau + coriolis_gravity#filtered dynamic effect
         y = (1-gamma) * dyn_terms + gamma * self.y_pre
         
         ## final disturbance torque
