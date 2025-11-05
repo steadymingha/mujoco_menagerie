@@ -5,7 +5,6 @@ class ContactModel:
     def __init__(self):
         self.kalman_param()
 
-    
     def kalman_param(self):
         # System model
         n = 4
@@ -27,15 +26,15 @@ class ContactModel:
         self.z1, self.z2 = np.zeros((n,1)), np.zeros((n,1))
         self.z = np.block([[self.z1],[self.z2]])
 
-    def update(self, foot_height, foot_force):
-        self.u = self.prediction_prob_model()   #prob_contact_given_state_subphase
+    def update(self, data, foot_height, foot_force):
+        self.u = self.prediction_prob_model(data)   #prob_contact_given_state_subphase
         self.z1 = self.prob_contact_given_foot_height(foot_height)
         self.z2 = self.prob_contact_given_contact_force(foot_force)
 
 
-    def prob_contact(self, foot_height, foot_force):
+    def prob_contact(self, data, foot_height, foot_force):
         # model update
-        self.update(foot_height, foot_force)
+        self.update(data, foot_height, foot_force)
 
         # (1) Prediction.
         x_pred = self.A @ x_esti + self.B @ self.u
@@ -50,6 +49,8 @@ class ContactModel:
         # (4) Error Covariance.
         self.Sigma = Sigma_pred - self.K * self.H * Sigma_pred
 
+        return x_esti
+
     def get_current_phase(t0, t, T):
         phi0 = (t-t0)/T # [0,1)
         phi = np.array([phi0, phi0])
@@ -61,13 +62,15 @@ class ContactModel:
         
         return phi, s_phi
     
-    def prediction_prob_model(self): #prob_contact_given_state_subphase
+    def prediction_prob_model(self, data): #prob_contact_given_state_subphase
         ## model parameter ##
         mean_cbar = np.array([0, 1])
         var_cbar_sq = 0.05
         mean_c = np.array([0, 1])
         var_c_sq = 0.05
-        t0 = 0
+        t0 = data.time % T # start time of the current period .. dasdkfjadslfjdsa;lfjsdkljasdlkjf
+        t = data.time # current time
+        T = 1 # determined cycle period
         phi, s_phi = self.get_current_phase(t0, t, T)
         
         if s_phi: # stance state (0)
