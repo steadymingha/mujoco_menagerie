@@ -113,19 +113,20 @@ class FootHeight:
         return rot_matrix
 
 class FootForce:
-    def __init__(self):
+    def __init__(self, model):
         self.y_pre = 0
         self.tau = 0
+        self.model = model
         self.M = np.zeros((model.nv, model.nv))
     
-    def get_foot_force(self, model, data, torque):
+    def get_foot_force(self, data, torque):
         gamma = 0.828 # 0~1
         beta = 103.7
         
         S_T = np.block([[np.zeros([6,12])], [np.eye(12)]])
 
         ### p = mv (Mq_dot) ###        
-        mujoco.mj_fullM(model, self.M, data.qM)
+        mujoco.mj_fullM(self.model, self.M, data.qM)
         joint_angle_list = [
             data.sensor(f'{joint}_{leg}_vel').data[0]
             for joint in JOINTS
@@ -140,7 +141,7 @@ class FootForce:
         p = self.M @ q_dot
         
         ### C^T *q_dot - g ###
-        mujoco.mj_inverse(model, data)
+        mujoco.mj_inverse(self.model, data)
         coriolis_gravity = data.qfrc_bias[:, np.newaxis] # 18x1  C.T*q_dot - g 
         
         ## Dynamic effects for Disturbance torque
