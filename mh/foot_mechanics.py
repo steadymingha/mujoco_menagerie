@@ -119,7 +119,7 @@ class FootForce:
         self.model = model
         self.M = np.zeros((model.nv, model.nv))
     
-    def get_foot_force(self, data, torque):
+    def get_foot_force(self, data):
         gamma = 0.828 # 0~1
         beta = 103.7
         
@@ -153,7 +153,7 @@ class FootForce:
         
         # save current value for next loop
         self.y_pre = y
-        self.tau = torque
+        self.tau = data.ctrl[:]
 
         return tau_d
     

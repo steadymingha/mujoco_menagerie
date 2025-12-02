@@ -89,12 +89,17 @@ class ContactModel:
         return prior_p
     
     def prob_contact_given_foot_height(self, pz):
-        mean_zg = 0 # mu
-        var_zg = math.sqrt(0.1) # sigma
+        mu_zg = 0 # mean
+        sigma_zg = math.sqrt(0.1) # var
 
-        p_c_pz = 0.5 * (1 + erf((mean_zg-pz)/(var_zg*math.sqrt(2))))
+        p_c_pz = 0.5 * (1 + erf((mu_zg-pz)/(sigma_zg*math.sqrt(2))))
 
         return p_c_pz
 
     def prob_contact_given_contact_force(self, fz):
-        return 0
+        mu_fc = 40
+        sigma_fc = math.sqrt(25)
+
+        p_c_fz = 0.5 * (1 + erf((fz-mu_fc)/(sigma_fc*math.sqrt(2))))
+
+        return p_c_fz
