@@ -12,7 +12,7 @@ class ContactModel:
     def kalman_param(self):
         # System model
         n = 4
-        self.A = 0
+        self.A = np.zeros((4,4))
         self.H = np.vstack((np.eye(n), np.eye(n)))
         self.Sigma_w = 0.998 * np.eye(n)
         self.B = np.eye(n)
@@ -24,7 +24,7 @@ class ContactModel:
         self.Sigma_v = np.block([[self.Sigma_v1,np.zeros((n,n))], [np.zeros((n,n)),self.Sigma_v2]])
         
         # Initialization for estimation.
-        self.x = np.array([0., 0., 0., 0.])  
+        self.x_esti = np.zeros((4, 1))
         self.Sigma = np.eye(4) * 0.1
         self.K = np.eye(4)
         self.z1, self.z2 = np.zeros((n,1)), np.zeros((n,1))
@@ -34,25 +34,28 @@ class ContactModel:
         self.z1 = self.prob_contact_given_foot_height(foot_height)
         self.z2 = self.prob_contact_given_contact_force(foot_force)
         self.z = np.block([[self.z1],[self.z2]])
-
-    def prob_contact(self, data, foot_height, foot_force):
-        # model update
-        self.update(data, foot_height, foot_force)
-
+    
+    def kalman(self):
         # (1) Prediction.
-        x_pred = self.A @ x_esti + self.B @ self.u
+        x_pred = self.A @ self.x_esti + self.B @ self.u
         Sigma_pred = self.A @ self.Sigma @ self.A.T + self.Sigma_w
 
         # (2) Kalman Gain.
         self.K = Sigma_pred @ self.H.T @ (self.H @ Sigma_pred @ self.H.T + self.Sigma_v)
 
         # (3) Estimation.
-        x_esti = x_pred + self.K * (self.z - self.H * x_pred)
+        self.x_esti = x_pred + self.K @ (self.z - self.H @ x_pred)
 
         # (4) Error Covariance.
-        self.Sigma = Sigma_pred - self.K * self.H * Sigma_pred
+        self.Sigma = Sigma_pred - self.K @ self.H @ Sigma_pred
 
-        return x_esti
+        return self.x_esti # , self.K, self.Sigma
+
+    def prob_contact(self, data, foot_height, foot_force):
+        # model update
+        self.update(data, foot_height, foot_force)
+        p_foot_contact = self.kalman()
+        return p_foot_contact
     
     # LEGS = ['front_left', 'front_right', 'hind_left', 'hind_right']
     def get_current_phase(self, t):

@@ -1,5 +1,4 @@
-## Implementation of Contact Model Fusion for Event-Based Locomotion in Unstructured Terrains 
-
+## Implementation of Contact Model Fusion for Event-Based Locomotion in Unstructured Terrains
 import mujoco
 import numpy as np
 from mh.foot_mechanics import *
@@ -12,18 +11,16 @@ if __name__ == "__main__":
     model = mujoco.MjModel.from_xml_path(xml_path)
     data = mujoco.MjData(model)
 
-    fh = FootHeight()
     ff = FootForce(model)
+    fh = FootHeight()
     cm = ContactModel()
 
     print(model.opt.timestep)
     nsteps = int(np.ceil(SIMUL_TIME / model.opt.timestep))
     for i in range(nsteps):
         print(i)
+        fz = ff.get_foot_force(data)
         pz = fh.get_foot_height(data)
-        fz = ff.get_foot_force(data)#, torque)
         p_foot_contact = cm.prob_contact(data, pz, fz)
         mujoco.mj_step(model, data)
 
-
-    

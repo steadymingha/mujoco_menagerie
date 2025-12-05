@@ -67,11 +67,12 @@ class FootHeight:
         q_body_w= data.body('base').xquat
         rot_matrix = self.quat_to_rot_matrix(q_body_w)
 
-        foot_w = []
+        foot_height_z = []
         for foot_b in feet_b:
-            foot_w.append(body_w + rot_matrix @ foot_b)
+            foot_height_world = body_w + rot_matrix @ foot_b
+            foot_height_z.append(foot_height_world[-1])
 
-        return np.array(foot_w)[:,-1] # pick foot z height only
+        return np.vstack(foot_height_z)
 
 
     def quat_to_rot_matrix(self, q):
@@ -112,14 +113,70 @@ class FootHeight:
         
         return rot_matrix
 
+LEG_INDICES = {
+    'FL': [6, 7, 8],
+    'FR': [9, 10, 11],
+    'RL': [12, 13, 14],
+    'RR': [15, 16, 17]
+}
 class FootForce:
     def __init__(self, model):
         self.y_pre = 0
-        self.tau = 0
+        self.tau = np.zeros((12,1))
         self.model = model
         self.M = np.zeros((model.nv, model.nv))
     
+    def get_foot_force_jacobian(self, data, leg_name='FL'):
+        model = self.model
+        # 1. 사이트(발끝) 이름 정의 (XML에 정의된 이름)
+        # 예: 'FL_foot', 'FR_foot' 등
+        site_name = f"{leg_name}_foot"
+        site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)
+
+        # 2. 전체 자코비안을 담을 배열 준비 (3 x nv)
+        # 3행: x, y, z 선속도 / nv열: 전체 관절 자유도
+        jacp = np.zeros((3, model.nv))
+        jacr = np.zeros((3, model.nv)) # 회전 자코비안은 이번엔 필요 없음
+
+        # 3. MuJoCo 함수로 자코비안 계산 (World Frame 기준)
+        mujoco.mj_jacSite(model, data, jacp, jacr, site_id)
+
+        # 4. 해당 다리의 관절 인덱스 찾기 (S_li 역할)
+        # Unitree Go2의 nv 구조: [Base(0~5), FL(6~8), FR(9~11), RL(12~14), RR(15~17)]
+        # (주의: XML 로드 순서에 따라 다를 수 있으니 확인 필요, 보통 위 순서임)
+        
+        # LEG_INDICES = {
+        #     'FL': [6, 7, 8],
+        #     'FR': [9, 10, 11],
+        #     'RL': [12, 13, 14],
+        #     'RR': [15, 16, 17]
+        # }
+        idx = LEG_INDICES[leg_name]
+
+        # 5. 필요한 3x3 자코비안 추출 (J_i)
+        J_leg = jacp[:, idx] # 3x3 행렬
+
+        return J_leg# --- 실제 힘 계산 부분 (사용자 수식 적용) ---# J_leg = get_foot_force_jacobian(model, data, 'FL')# tau_d_leg = [tau_abd, tau_hip, tau_knee] (해당 다리의 외란 토크 3개)# J_transpose_inv = np.linalg.pinv(J_leg.T) # 의사 역행렬 추천# f_foot_estimated = J_transpose_inv @ tau_d_leg # f_z = f_foot_estimated[2] # 수직 반력
+
+    def torque_to_force(self, data, tau_d):
+        foot_force_z = []
+        for leg_name in LEG_INDICES:
+            leg_idx = LEG_INDICES[leg_name]
+            tau_d_1leg = tau_d[leg_idx]
+            J = self.get_foot_force_jacobian(data, leg_name)
+            foot_force = np.linalg.pinv(J.T) @ tau_d_1leg
+            foot_force_z.append(foot_force[-1])
+
+        return np.vstack(foot_force_z)
+
     def get_foot_force(self, data):
+        # (Ji^T)-1*tau_d
+        tau_d = self.get_disturbance_torque(data)
+        fz = self.torque_to_force(data, tau_d)
+        return fz
+
+
+    def get_disturbance_torque(self, data): # eq (10) in paper
         gamma = 0.828 # 0~1
         beta = 103.7
         
@@ -145,7 +202,7 @@ class FootForce:
         coriolis_gravity = data.qfrc_bias[:, np.newaxis] # 18x1  C.T*q_dot - g 
         
         ## Dynamic effects for Disturbance torque
-        dyn_terms = beta*p + S_T*self.tau + coriolis_gravity#filtered dynamic effect
+        dyn_terms = beta*p + S_T@self.tau + coriolis_gravity#filtered dynamic effect
         y = (1-gamma) * dyn_terms + gamma * self.y_pre
         
         ## final disturbance torque
@@ -153,9 +210,9 @@ class FootForce:
         
         # save current value for next loop
         self.y_pre = y
-        self.tau = data.ctrl[:]
+        self.tau = data.ctrl[:, np.newaxis] # previous control input(Actuator 12)
 
-        return tau_d
+        return tau_d # 18x1
     
 if __name__ == "__main__":
     # --- 시뮬레이션 루프 (예시) ---
