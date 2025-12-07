@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python: mjpython",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "python": "/Users/mhlee/fun/mujoco_menagerie/.venv/bin/mjpython", 
+            "env": {
+                "DYLD_FALLBACK_LIBRARY_PATH": "/Users/mhlee/.local/share/uv/python/cpython-3.12.11-macos-aarch64-none/lib:${env:DYLD_FALLBACK_LIBRARY_PATH}"
+            }
+        }
+    ]
+}
+
+// ctrl + F5 : run
+// F5 : debugging
