@@ -89,7 +89,7 @@ class ContactModel:
         prob_swing = 0.5 * (2 + erf((mean_cbar[0] - phi) / denom_cbar) + erf((phi - mean_cbar[1]) / denom_cbar))
 
         prior_p = s_phi * prob_stance + (1 - s_phi) * prob_swing        
-        return prior_p
+        return prior_p[:, np.newaxis]
     
     def prob_contact_given_foot_height(self, pz):
         mu_zg = 0 # mean

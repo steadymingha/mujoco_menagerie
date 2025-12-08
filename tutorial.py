@@ -4,6 +4,7 @@ import mujoco
 import mujoco.viewer
 from pathlib import Path
 import enum
+
 # --- Helper Methods ---
 
 class Resolution(enum.Enum):
@@ -20,21 +21,23 @@ def azimuth(time: float, duration: float, total_rotation: float, offset: float) 
 # --- Parameters ---
 res = Resolution.SD
 fps = 60
-duration = 10.0
+duration = 100000.0
 ctrl_rate = 2
 ctrl_std = 0.05
 total_rot = 60
-# blend_std는 실시간 뷰어에서는 픽셀 블렌딩을 하지 않으므로 제외했습니다.
 
 # --- Loading Model ---
-# 주의: 실행하는 위치에 unitree_go1 폴더가 있어야 합니다.
 model_dir = Path("unitree_go1")
 model_xml = model_dir / "scene.xml"
 
+# 경로 확인
 if not model_xml.exists():
     print(f"Error: Model file not found at {model_xml}")
-    print("Please make sure the 'unitree_go1' directory is in the current folder.")
-    exit(1)
+    # 테스트를 위해 go2 경로가 있다면 사용 (없으면 에러)
+    model_xml = Path("./unitree_go2/go2_mjx.xml")
+    if not model_xml.exists():
+        print("Please check your XML path.")
+        exit(1)
 
 model = mujoco.MjModel.from_xml_path(str(model_xml))
 data = mujoco.MjData(model)
@@ -51,7 +54,6 @@ kernel /= np.linalg.norm(kernel)
 for i in range(model.nu):
     perturb[:, i] = np.convolve(perturb[:, i], kernel, mode="same")
 
-# 초기 컨트롤 값 설정
 if model.nkey > 0:
     mujoco.mj_resetDataKeyframe(model, data, 0)
     ctrl0 = data.ctrl.copy()
@@ -59,59 +61,89 @@ else:
     mujoco.mj_resetData(model, data)
     ctrl0 = np.mean(model.actuator_ctrlrange, axis=1)
 
+# --- 발 Geom ID 찾기 ---
+foot_names = ["FL", "FR", "RL", "RR"] 
+foot_geom_ids = []
+for name in foot_names:
+    gid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, name)
+    if gid != -1:
+        foot_geom_ids.append(gid)
+
 # --- Real-time Visualization Loop ---
 
 def main():
-    # Passive Viewer 실행 (제어권을 우리가 가짐)
     with mujoco.viewer.launch_passive(model, data) as viewer:
-        
-        # 뷰어 초기 설정
-        viewer.cam.distance = 1.0  # 카메라 거리
-        viewer.cam.lookat = [0, 0, 0.2] # 로봇을 바라보도록 조정
+        viewer.vopt.geomgroup[3] = 1
+        viewer.cam.distance = 1.0
+        viewer.cam.lookat = [0, 0, 0.2]
         start_azimuth = viewer.cam.azimuth
-        
-        # 렌더링 옵션 (Collision을 보고 싶다면 아래 주석을 조정하세요)
-        # viewer.opt.flags[mujoco.mjtVisFlag.mjVIS_CONVEXHULL] = True
         
         start_time = time.time()
         
         for i in range(nsteps):
-            # 1. 뷰어가 닫혔으면 종료
             if not viewer.is_running():
                 break
 
             step_start = time.time()
 
-            # 2. 제어 입력 적용
+            # 1. 제어 입력 적용
             data.ctrl[:] = ctrl0 + ctrl_std * perturb[i]
             
-            # 3. 시뮬레이션 스텝
+            # 2. 시뮬레이션 스텝
             mujoco.mj_step(model, data)
 
-            # 4. 카메라 업데이트 (원래 코드의 azimuth 로직 적용)
+            # --- [수정된 부분] 랜덤 값 생성 및 시각화 ---
+            
+            # (A) 랜덤 확률 값 생성
+            random_prob = np.random.rand()
+
+            # (B) 발 색깔 바꾸기 (확률 > 0.5 이면 빨강)
+            if random_prob > 0.5:
+                foot_color = [1.0, 0.0, 0.0, 1.0] # 빨강
+            else:
+                foot_color = [0.0, 0.0, 1.0, 1.0] # 파랑
+
+            for gid in foot_geom_ids:
+                model.geom_rgba[gid] = foot_color
+
+            # (C) 3D 텍스트 라벨 추가 (add_overlay 대체)
+            # viewer.user_scn을 사용하여 로봇 위에 글자를 띄웁니다.
+            if viewer.user_scn:
+                viewer.user_scn.ngeom = 0 # 이전 프레임의 유저 지오메트리 초기화
+                
+                # 라벨을 추가할 공간이 있는지 확인
+                if viewer.user_scn.ngeom < viewer.user_scn.maxgeom:
+                    geom = viewer.user_scn.geoms[viewer.user_scn.ngeom]
+                    
+                    # 라벨 초기화 (위치: 로봇 위 0.5m)
+                    text_pos = np.array([data.qpos[0], data.qpos[1], data.qpos[2] + 0.5])
+                    mujoco.mjv_initGeom(
+                        geom,
+                        mujoco.mjtGeom.mjGEOM_LABEL,
+                        np.zeros(3),
+                        text_pos,
+                        np.zeros(9),
+                        np.array([1, 1, 1, 1]) # 흰색 글자
+                    )
+                    # 텍스트 설정
+                    geom.label = f"Prob: {random_prob:.4f}"
+                    
+                    viewer.user_scn.ngeom += 1
+
+            # ------------------------------------------
+
+            # 3. 카메라 업데이트
             current_sim_time = data.time
             if current_sim_time < duration:
-                # 카메라 회전 적용
                 viewer.cam.azimuth = azimuth(current_sim_time, duration, total_rot, start_azimuth)
 
-            # 5. 뷰어 동기화 (화면 갱신)
+            # 4. 뷰어 동기화
             viewer.sync()
 
-            # 6. Real-time 속도 맞추기 (FPS 제어)
-            # 시뮬레이션이 너무 빠르면 잠시 대기
+            # 5. FPS 제어
             time_until_next_step = model.opt.timestep - (time.time() - step_start)
             if time_until_next_step > 0:
                 time.sleep(time_until_next_step)
 
 if __name__ == "__main__":
     main()
-
-# model_dir = Path("unitree_go1")
-# model_xml = model_dir / "scene.xml"
-# model = mujoco.MjModel.from_xml_path(str(model_xml))
-# data = mujoco.MjData(model)
-
-# # 간단히 실행 (가장 안정적)
-# if __name__ == "__main__":
-#     print("MuJoCo Viewer를 실행합니다. (마우스로 로봇을 드래그해보세요)")
-#     mujoco.viewer.launch(model, data)
