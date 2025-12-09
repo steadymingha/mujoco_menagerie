@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.special import erf
 import math
+# np.set_printoptions(precision=2, suppress=True)
 
 class ContactModel:
     def __init__(self):
@@ -48,6 +49,7 @@ class ContactModel:
 
         # (4) Error Covariance.
         self.Sigma = Sigma_pred - self.K @ self.H @ Sigma_pred
+        self.x_esti = np.clip(self.x_esti, 0.0, 1.0)
 
         return self.x_esti # , self.K, self.Sigma
 
@@ -88,7 +90,8 @@ class ContactModel:
         # Swing(0)
         prob_swing = 0.5 * (2 + erf((mean_cbar[0] - phi) / denom_cbar) + erf((phi - mean_cbar[1]) / denom_cbar))
 
-        prior_p = s_phi * prob_stance + (1 - s_phi) * prob_swing        
+        prior_p = s_phi * prob_stance + (1 - s_phi) * prob_swing
+        
         return prior_p[:, np.newaxis]
     
     def prob_contact_given_foot_height(self, pz):
@@ -96,7 +99,7 @@ class ContactModel:
         sigma_zg = math.sqrt(0.1) # var
 
         p_c_pz = 0.5 * (1 + erf((mu_zg-pz)/(sigma_zg*math.sqrt(2))))
-
+        # print(f'foot height : \n {p_c_pz[0].item():.2f}, {p_c_pz[1].item():.2f}')
         return p_c_pz
 
     def prob_contact_given_contact_force(self, fz):
@@ -104,5 +107,6 @@ class ContactModel:
         sigma_fc = math.sqrt(25)
 
         p_c_fz = 0.5 * (1 + erf((fz-mu_fc)/(sigma_fc*math.sqrt(2))))
+        # print(f'contact force : \n {p_c_fz[0].item():.2f}, {p_c_fz[1].item():.2f}')
 
         return p_c_fz

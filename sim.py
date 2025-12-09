@@ -7,6 +7,7 @@ import enum
 import contextlib
 from mh.foot_mechanics import *
 from mh.ground_contact import ContactModel
+from graph import FootContactPlotter
 
 # --- Utils & Helpers ---
 class Resolution(enum.Enum):
@@ -117,13 +118,16 @@ def main():
     ff = FootForce(sim.model)
     fh = FootHeight()
     cm = ContactModel()
+    
+    plotter = FootContactPlotter(max_len=100, draw_interval=5)
     # # 2. 발 접촉 확률을 저장할 변수 (예시)
     # foot_contact_probs = [0.0, 0.0, 0.0, 0.0] # FR, FL, RR, RL
     
     print("Simulation Loop Started on Main Thread...")
     
-    # nsteps = int(np.ceil(SIMUL_TIME / model.opt.timestep))
+    nsteps = int(np.ceil(SIMUL_TIME / sim.model.opt.timestep))
     with sim.launch_viewer() as viewer:
+        # for i in range(nsteps):
         while viewer.is_running():
             
             # --- [A] 센서 데이터 수집 (Sensor Data Acquisition) ---
@@ -134,7 +138,9 @@ def main():
             fz = ff.get_foot_force(sim.data)
             pz = fh.get_foot_height(sim.data)
             p_foot_contact = cm.prob_contact(sim.data, pz, fz)
+            
             contents = f'FL, FR : {p_foot_contact[0].item():.2f}, {p_foot_contact[1].item():.2f}'
+            plotter.update(p_foot_contact)
 
             # 여기에 작성하신 알고리즘을 넣으시면 됩니다.
             # 지금은 예시로 랜덤값을 넣습니다.

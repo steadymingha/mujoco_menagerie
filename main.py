@@ -1,3 +1,5 @@
+# MIT Cheetah 3: Design and Control of a Robust, Dynamic Quadruped Robot
+
 # 0. User Cmd
 # 1. High level planning ()
 # 2. leg and body control
