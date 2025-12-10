@@ -21,33 +21,36 @@ class Go2Sim:
         self.data = mujoco.MjData(self.model)
         self.model.opt.timestep = dt
         
+        # Unlock Control Limits for strong torque
+        self.model.actuator_ctrlrange[:, 0] = -100.0 
+        self.model.actuator_ctrlrange[:, 1] = 100.0  
+        
         self.last_render_time = time.time()
         
-        # 2. Reset
+        # 2. Reset & Manual Pose Init
         mujoco.mj_resetData(self.model, self.data)
         
-        # --- [INIT] Force High Drop Position ---
-        # Start high enough (0.8m) to see the leg extend before hitting ground
-        self.data.qpos[0:3] = [0, 0, 0.8] 
-        self.data.qpos[3:7] = [1, 0, 0, 0] # Quaternion identity
+        # Start Position: High enough
+        self.data.qpos[0:3] = [0, 0, 0.5] 
+        self.data.qpos[3:7] = [1, 0, 0, 0]
 
-        # Manual Pose Init: Try to unfold slightly to avoid self-collision at start
-        # Hip: 0.5, Knee: -1.0
-        pose_init = [0.0, 0.5, -1.0]
+        # Init Pose for ALL legs: [Abd, Hip, Knee] -> [0.0, 0.8, -1.5]
+        # This matches our target controller to minimize startup jump
+        pose_init = [0.0, 0.8, -1.5]
         for i in range(4):
             base = 7 + i*3
             self.data.qpos[base:base+3] = pose_init
 
+        self.data.qvel[:] = 0.0
         mujoco.mj_forward(self.model, self.data)
-        
         self.ctrl0 = np.zeros(self.model.nu)
 
     @contextlib.contextmanager
     def launch_viewer(self):
         with mujoco.viewer.launch_passive(self.model, self.data) as viewer:
-            viewer.cam.distance = 1.5
-            viewer.cam.lookat = [0, 0, 0.3]
-            viewer.opt.geomgroup[3] = 1 # Show collision geoms
+            viewer.cam.distance = 2.0
+            viewer.cam.lookat = [0, 0, 0.2]
+            viewer.opt.geomgroup[3] = 1 
             yield viewer 
 
     def add_text(self, viewer, contents):
@@ -90,16 +93,9 @@ def get_foot_ids(model):
         if gid != -1: foot_geom_ids.append(gid)
     return foot_geom_ids
 
-# --- [MODIFIED] Fix: Only count contact with FLOOR ---
 def get_ground_truth_contact(model, data, foot_geom_ids):
     ground_truth = np.zeros(4)
-    
-    # Check for floor geometry (Usually ID 0, or named 'floor')
-    # If your XML doesn't name the floor, usually the plane is the first geom (id 0)
-    # Let's try to find it by name, if not, assume it's geom_id 0 if type is plane
     floor_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, 'floor')
-    
-    # If not named 'floor', look for the first plane
     if floor_id == -1:
         for i in range(model.ngeom):
             if model.geom_type[i] == mujoco.mjtGeom.mjGEOM_PLANE:
@@ -109,16 +105,8 @@ def get_ground_truth_contact(model, data, foot_geom_ids):
     for i in range(data.ncon):
         contact = data.contact[i]
         g1, g2 = contact.geom1, contact.geom2
-        
-        # Check contact: Foot <-> Floor
-        # Ignore Foot <-> Robot Body (Self collision)
-        
         for leg_idx, foot_id in enumerate(foot_geom_ids):
-            # Case 1: g1 is foot, g2 is floor
-            if g1 == foot_id and g2 == floor_id:
-                ground_truth[leg_idx] = 1.0
-            # Case 2: g2 is foot, g1 is floor
-            elif g2 == foot_id and g1 == floor_id:
+            if (g1 == foot_id and g2 == floor_id) or (g2 == foot_id and g1 == floor_id):
                 ground_truth[leg_idx] = 1.0
             
     return ground_truth
@@ -136,6 +124,19 @@ def main():
     plotter = FootContactPlotter(max_len=100, draw_interval=5)
     foot_ids = get_foot_ids(sim.model)
 
+    # Gains for PD Control
+    kp = 100.0
+    kd = 5.0
+
+    # Leg Indices Mapping
+    # Each leg has 3 motors: [Abd, Hip, Knee]
+    legs_indices = [
+        [0, 1, 2],   # FL
+        [3, 4, 5],   # FR
+        [6, 7, 8],   # RL
+        [9, 10, 11]  # RR
+    ]
+
     print("Simulation Loop Started...")
     
     with sim.launch_viewer() as viewer:
@@ -145,35 +146,40 @@ def main():
             fz = ff.get_foot_force(sim.data)
             pz = fh.get_foot_height(sim.data)
             p_foot_contact = cm.prob_contact(sim.data, pz, fz)
-            ground_truth = get_ground_truth_contact(sim.model, sim.data, foot_ids)
             
+            ground_truth = get_ground_truth_contact(sim.model, sim.data, foot_ids)
             plotter.update(p_foot_contact, ground_truth)
             
-            # --- [B] Visualization ---
-            for i, gid in enumerate(foot_ids):
-                sim.model.geom_matid[gid] = -1
-                if p_foot_contact[i] > 0.5:
-                    sim.model.geom_rgba[gid] = [1.0, 0.0, 0.0, 1.0] # Red
-                else:
-                    sim.model.geom_rgba[gid] = [0.0, 0.0, 1.0, 1.0] # Blue
-
-            # --- [C] Controller: Brute Force Extension (FIXED) ---
+            # --- [C] Controller: All Legs Stiff Standing ---
             sim.ctrl0[:] = 0.0 
             
-            # 1. Extend FL Knee: Tried +20, failed. Trying -25.0
-            sim.ctrl0[2] = -25.0 
+            # Loop through all 4 legs
+            target_abds = [0.174, -0.174, 0.174, -0.174] 
+            target_thigh = [-0.1, -0.1, 0.8, 0.8]
+            for leg_idx in range(4):
+                indices = legs_indices[leg_idx] # [Abd, Hip, Knee] indices for this leg
+                
+                # 1. Abduction: PD Control -> Hold at 0.0
+                i_abd = indices[0]
+                curr_abd = sim.data.qpos[7 + i_abd]
+                vel_abd = sim.data.qvel[6 + i_abd]
+                sim.ctrl0[i_abd] = kp * (target_abds[leg_idx] - curr_abd) - kd * vel_abd
+                
+                # 2. Hip (Thigh): PD Control -> Hold at 0.8
+                i_hip = indices[1]
+                curr_hip = sim.data.qpos[7 + i_hip]
+                vel_hip = sim.data.qvel[6 + i_hip]
+                sim.ctrl0[i_hip] = kp * (target_thigh[leg_idx] - curr_hip) - kd * vel_hip
+                
+                # 3. Knee (Calf): Brute Force -> Extend (+30 Nm)
+                i_knee = indices[2]
+                sim.ctrl0[i_knee] = 30.0 
             
-            # 2. Extend FL Hip (Thigh) to help: Index 1
-            # Usually + extends thigh downwards
-            sim.ctrl0[1] = 10.0 
-            
-            # Debug: Check actual angle
-            knee_angle = sim.data.qpos[7+2] # FL Knee
+            # Display FL info for debugging
+            debug_txt = f"GT(FL):{ground_truth[0]} | Prob(FL):{p_foot_contact[0].item():.2f}"
             
             sim.step(sim.ctrl0)
-            
-            txt = f"GT:{ground_truth[0]} | Ang:{knee_angle:.2f}"
-            sim.add_text(viewer, txt)
+            sim.add_text(viewer, debug_txt)
             sim.sync(viewer)
 
 if __name__ == "__main__":
