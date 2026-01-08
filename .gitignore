@@ -1,2 +1,6 @@
 .DS_Store
 .idea
+__pycache__/graph.cpython-312.pyc
+__pycache__/sim.cpython-312.pyc
+mh/__pycache__/foot_mechanics.cpython-312.pyc
+mh/__pycache__/ground_contact.cpython-312.pyc

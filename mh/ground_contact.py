@@ -15,7 +15,7 @@ class ContactModel:
         n = 4
         self.A = np.zeros((4,4))
         self.H = np.vstack((np.eye(n), np.eye(n)))
-        self.Sigma_w = 0.998 * np.eye(n)
+        self.Sigma_w = 999#0.998 * np.eye(n)
         self.B = np.eye(n)
 
         # Measurement
@@ -73,9 +73,9 @@ class ContactModel:
     def prediction_prob_model(self, data): #prob_contact_given_state_subphase
         ## model parameter ##
         mean_cbar = np.array([0, 1])
-        var_cbar_sq = 0.05
+        var_cbar_sq = 2#0.05  # swing cbar 1 is better
         mean_c = np.array([0, 1])
-        var_c_sq = 0.05
+        var_c_sq = 0.2#0.05 # 0.3=1=9999  0.2 is best
         
         t = data.time # current time
 

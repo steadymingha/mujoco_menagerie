@@ -5,6 +5,8 @@ import mujoco.viewer
 from pathlib import Path
 import enum
 import contextlib
+import argparse
+from datetime import datetime
 from mh.foot_mechanics import *
 from mh.ground_contact import ContactModel
 from graph import FootContactPlotter
@@ -44,6 +46,9 @@ class Go2Sim:
         self.data.qvel[:] = 0.0
         mujoco.mj_forward(self.model, self.data)
         self.ctrl0 = np.zeros(self.model.nu)
+        
+        # Initialize simulation time tracking for automated lift
+        self.sim_time = 0.0
 
     @contextlib.contextmanager
     def launch_viewer(self):
@@ -71,15 +76,42 @@ class Go2Sim:
                     geom.label = contents
                     viewer.user_scn.ngeom += 1
 
+    def apply_automated_lift(self, data):
+        """
+        Applies automated lifting force to robot base during t=2s to t=4s
+        Uses qfrc_applied to add external force directly to the base
+        """
+        # Check if we're in the lift time window (2s to 4s)
+        if 2.0 <= self.sim_time <= 3.0:
+            # Apply upward force (Z-axis) to overcome robot weight and lift it
+            # Force applied to base body (index 0 for floating base)
+            lift_force = 150.0#225.0  # Newtons - sufficient to lift Go2 robot
+            data.qfrc_applied[2] = lift_force  # Z-axis force on base
+        else:
+            # Clear any applied forces when not in lift window
+            data.qfrc_applied[:] = 0.0
+
     def step(self, ctrl_input: np.ndarray = None):
         if ctrl_input is not None:
             self.data.ctrl[:] = ctrl_input
         else:
             self.data.ctrl[:] = self.ctrl0 
+        
+        # Apply automated lift before stepping
+        self.apply_automated_lift(self.data)
+        
         mujoco.mj_step(self.model, self.data)
+        
+        # Update simulation time
+        self.sim_time += self.model.opt.timestep
     
-    def sync(self, viewer):
-        viewer.sync()
+    def sync(self, viewer=None):
+        """
+        Synchronizes with viewer and maintains real-time speed.
+        If viewer is None (headless mode), only maintains timing.
+        """
+        if viewer is not None:
+            viewer.sync()
         time_until_next_step = self.model.opt.timestep - (time.time() - self.last_render_time)
         if time_until_next_step > 0:
             time.sleep(time_until_next_step)
@@ -111,17 +143,24 @@ def get_ground_truth_contact(model, data, foot_geom_ids):
             
     return ground_truth
 
-SIMUL_TIME = 100 
+SIMUL_TIME = 4.0  # Simulation duration in seconds 
 
 def main():
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='MuJoCo Go2 Robot Simulation')
+    parser.add_argument('--headless', action='store_true',
+                        help='Run simulation without viewer (headless mode)', default=True)
+    args = parser.parse_args()
+
     model_file = './unitree_go2/scene_mjx.xml'
     sim = Go2Sim(model_file)
-    
+
     ff = FootForce(sim.model)
     fh = FootHeight()
     cm = ContactModel()
-    
-    plotter = FootContactPlotter(max_len=100, draw_interval=5)
+
+    # Disable real-time display, will save plot at the end
+    plotter = FootContactPlotter(max_len=2000, draw_interval=1, enable_display=False)
     foot_ids = get_foot_ids(sim.model)
 
     # Gains for PD Control
@@ -138,49 +177,109 @@ def main():
     ]
 
     print("Simulation Loop Started...")
-    
-    with sim.launch_viewer() as viewer:
-        while viewer.is_running():
+    print(f"Running for {SIMUL_TIME} seconds...")
+    if args.headless:
+        print("Running in HEADLESS mode (no viewer)")
 
+    # Run simulation with or without viewer
+    if args.headless:
+        # Headless mode - no viewer
+        while sim.sim_time < SIMUL_TIME:
             # --- [A] Algorithms ---
             fz = ff.get_foot_force(sim.data)
             pz = fh.get_foot_height(sim.data)
             p_foot_contact = cm.prob_contact(sim.data, pz, fz)
-            
+
             ground_truth = get_ground_truth_contact(sim.model, sim.data, foot_ids)
             plotter.update(p_foot_contact, ground_truth)
-            
+
             # --- [C] Controller: All Legs Stiff Standing ---
-            sim.ctrl0[:] = 0.0 
-            
+            sim.ctrl0[:] = 0.0
+
             # Loop through all 4 legs
-            target_abds = [0.174, -0.174, 0.174, -0.174] 
+            target_abds = [0.174, -0.174, 0.174, -0.174]
             target_thigh = [-0.1, -0.1, 0.8, 0.8]
             for leg_idx in range(4):
                 indices = legs_indices[leg_idx] # [Abd, Hip, Knee] indices for this leg
-                
+
                 # 1. Abduction: PD Control -> Hold at 0.0
                 i_abd = indices[0]
                 curr_abd = sim.data.qpos[7 + i_abd]
                 vel_abd = sim.data.qvel[6 + i_abd]
                 sim.ctrl0[i_abd] = kp * (target_abds[leg_idx] - curr_abd) - kd * vel_abd
-                
+
                 # 2. Hip (Thigh): PD Control -> Hold at 0.8
                 i_hip = indices[1]
                 curr_hip = sim.data.qpos[7 + i_hip]
                 vel_hip = sim.data.qvel[6 + i_hip]
                 sim.ctrl0[i_hip] = kp * (target_thigh[leg_idx] - curr_hip) - kd * vel_hip
-                
+
                 # 3. Knee (Calf): Brute Force -> Extend (+30 Nm)
                 i_knee = indices[2]
-                sim.ctrl0[i_knee] = 30.0 
-            
-            # Display FL info for debugging
-            debug_txt = f"GT(FL):{ground_truth[0]} | Prob(FL):{p_foot_contact[0].item():.2f}"
-            
+                sim.ctrl0[i_knee] = 30.0
+
             sim.step(sim.ctrl0)
-            sim.add_text(viewer, debug_txt)
-            sim.sync(viewer)
+            sim.sync()  # No viewer, just maintain timing
+
+            # Print progress every 1 second
+            if int(sim.sim_time * 10) % 10 == 0 and sim.sim_time > 0:
+                lift_status = "LIFT" if 2.0 <= sim.sim_time <= 3.0 else "GROUND"
+                # print(f"T:{sim.sim_time:.1f}s | {lift_status} | GT(FL):{ground_truth[0]} | Prob(FL):{p_foot_contact[0].item():.2f}")
+    else:
+        # Viewer mode
+        with sim.launch_viewer() as viewer:
+            while viewer.is_running() and sim.sim_time < SIMUL_TIME:
+                # --- [A] Algorithms ---
+                fz = ff.get_foot_force(sim.data)
+                pz = fh.get_foot_height(sim.data)
+                p_foot_contact = cm.prob_contact(sim.data, pz, fz)
+
+                ground_truth = get_ground_truth_contact(sim.model, sim.data, foot_ids)
+                plotter.update(p_foot_contact, ground_truth)
+
+                # --- [C] Controller: All Legs Stiff Standing ---
+                sim.ctrl0[:] = 0.0
+
+                # Loop through all 4 legs
+                target_abds = [0.174, -0.174, 0.174, -0.174]
+                target_thigh = [-0.1, -0.1, 0.8, 0.8]
+                for leg_idx in range(4):
+                    indices = legs_indices[leg_idx] # [Abd, Hip, Knee] indices for this leg
+
+                    # 1. Abduction: PD Control -> Hold at 0.0
+                    i_abd = indices[0]
+                    curr_abd = sim.data.qpos[7 + i_abd]
+                    vel_abd = sim.data.qvel[6 + i_abd]
+                    sim.ctrl0[i_abd] = kp * (target_abds[leg_idx] - curr_abd) - kd * vel_abd
+
+                    # 2. Hip (Thigh): PD Control -> Hold at 0.8
+                    i_hip = indices[1]
+                    curr_hip = sim.data.qpos[7 + i_hip]
+                    vel_hip = sim.data.qvel[6 + i_hip]
+                    sim.ctrl0[i_hip] = kp * (target_thigh[leg_idx] - curr_hip) - kd * vel_hip
+
+                    # 3. Knee (Calf): Brute Force -> Extend (+30 Nm)
+                    i_knee = indices[2]
+                    sim.ctrl0[i_knee] = 30.0
+
+                # Display debug info including lift status
+                lift_status = "LIFT" if 2.0 <= sim.sim_time <= 3.0 else "GROUND"
+                debug_txt = f"T:{sim.sim_time:.1f}s | {lift_status} | GT(FL):{ground_truth[0]} | Prob(FL):{p_foot_contact[0].item():.2f}"
+
+                sim.step(sim.ctrl0)
+                sim.add_text(viewer, debug_txt)
+                sim.sync(viewer)
+
+    # Save plot after simulation ends
+    print(f"\nSimulation completed at t={sim.sim_time:.2f}s")
+
+    # Generate timestamp filename (format: YYMMDD_HHMM.png)
+    timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
+    filename = f"results/{timestamp}.png"
+
+    plotter.save(filename)
+    plotter.close()
+    print("Done!")
 
 if __name__ == "__main__":
     main()
