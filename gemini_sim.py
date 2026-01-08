@@ -78,17 +78,20 @@ class Go2Sim:
 
     def apply_automated_lift(self, data):
         """
-        Applies automated lifting force to robot base during t=2s to t=4s
-        Uses qfrc_applied to add external force directly to the base
+        Applies automated lifting force to robot base periodically.
+        Cycle: 2s ground -> 1s lift, repeated.
         """
-        # Check if we're in the lift time window (2s to 4s)
-        if 2.0 <= self.sim_time <= 3.0:
-            # Apply upward force (Z-axis) to overcome robot weight and lift it
-            # Force applied to base body (index 0 for floating base)
-            lift_force = 150.0#225.0  # Newtons - sufficient to lift Go2 robot
-            data.qfrc_applied[2] = lift_force  # Z-axis force on base
+        cycle_period = 3.0  # Total cycle: 2s ground + 1s lift
+        ground_duration = 2.0
+
+        # Time within current cycle
+        t_in_cycle = self.sim_time % cycle_period
+
+        # Lift during last 1s of each cycle (i.e., t_in_cycle >= 2.0)
+        if t_in_cycle >= ground_duration:
+            lift_force = 150.0  # Newtons
+            data.qfrc_applied[2] = lift_force
         else:
-            # Clear any applied forces when not in lift window
             data.qfrc_applied[:] = 0.0
 
     def step(self, ctrl_input: np.ndarray = None):
@@ -143,7 +146,7 @@ def get_ground_truth_contact(model, data, foot_geom_ids):
             
     return ground_truth
 
-SIMUL_TIME = 4.0  # Simulation duration in seconds 
+SIMUL_TIME = 9.0  # Simulation duration in seconds (3 cycles) 
 
 def main():
     # Parse command line arguments
@@ -181,94 +184,58 @@ def main():
     if args.headless:
         print("Running in HEADLESS mode (no viewer)")
 
+    # Target positions for controller
+    target_abds = [0.174, -0.174, 0.174, -0.174]
+    target_thigh = [-0.1, -0.1, 0.8, 0.8]
+
+    def run_step(viewer=None):
+        """Common simulation step logic for both headless and viewer modes."""
+        # --- [A] Algorithms ---
+        fz = ff.get_foot_force(sim.data)
+        pz = fh.get_foot_height(sim.data)
+        p_foot_contact = cm.prob_contact(sim.data, pz, fz)
+        ground_truth = get_ground_truth_contact(sim.model, sim.data, foot_ids)
+        plotter.update(p_foot_contact, ground_truth)
+
+        # --- [C] Controller: All Legs Stiff Standing ---
+        sim.ctrl0[:] = 0.0
+        for leg_idx in range(4):
+            indices = legs_indices[leg_idx]  # [Abd, Hip, Knee] indices for this leg
+
+            # 1. Abduction: PD Control
+            i_abd = indices[0]
+            curr_abd = sim.data.qpos[7 + i_abd]
+            vel_abd = sim.data.qvel[6 + i_abd]
+            sim.ctrl0[i_abd] = kp * (target_abds[leg_idx] - curr_abd) - kd * vel_abd
+
+            # 2. Hip (Thigh): PD Control
+            i_hip = indices[1]
+            curr_hip = sim.data.qpos[7 + i_hip]
+            vel_hip = sim.data.qvel[6 + i_hip]
+            sim.ctrl0[i_hip] = kp * (target_thigh[leg_idx] - curr_hip) - kd * vel_hip
+
+            # 3. Knee (Calf): Brute Force -> Extend (+30 Nm)
+            i_knee = indices[2]
+            sim.ctrl0[i_knee] = 30.0
+
+        sim.step(sim.ctrl0)
+
+        # Viewer-specific: display debug text
+        if viewer:
+            lift_status = "LIFT" if 2.0 <= sim.sim_time <= 3.0 else "GROUND"
+            debug_txt = f"T:{sim.sim_time:.1f}s | {lift_status} | GT(FL):{ground_truth[0]} | Prob(FL):{p_foot_contact[0].item():.2f}"
+            sim.add_text(viewer, debug_txt)
+
+        sim.sync(viewer)
+
     # Run simulation with or without viewer
     if args.headless:
-        # Headless mode - no viewer
         while sim.sim_time < SIMUL_TIME:
-            # --- [A] Algorithms ---
-            fz = ff.get_foot_force(sim.data)
-            pz = fh.get_foot_height(sim.data)
-            p_foot_contact = cm.prob_contact(sim.data, pz, fz)
-
-            ground_truth = get_ground_truth_contact(sim.model, sim.data, foot_ids)
-            plotter.update(p_foot_contact, ground_truth)
-
-            # --- [C] Controller: All Legs Stiff Standing ---
-            sim.ctrl0[:] = 0.0
-
-            # Loop through all 4 legs
-            target_abds = [0.174, -0.174, 0.174, -0.174]
-            target_thigh = [-0.1, -0.1, 0.8, 0.8]
-            for leg_idx in range(4):
-                indices = legs_indices[leg_idx] # [Abd, Hip, Knee] indices for this leg
-
-                # 1. Abduction: PD Control -> Hold at 0.0
-                i_abd = indices[0]
-                curr_abd = sim.data.qpos[7 + i_abd]
-                vel_abd = sim.data.qvel[6 + i_abd]
-                sim.ctrl0[i_abd] = kp * (target_abds[leg_idx] - curr_abd) - kd * vel_abd
-
-                # 2. Hip (Thigh): PD Control -> Hold at 0.8
-                i_hip = indices[1]
-                curr_hip = sim.data.qpos[7 + i_hip]
-                vel_hip = sim.data.qvel[6 + i_hip]
-                sim.ctrl0[i_hip] = kp * (target_thigh[leg_idx] - curr_hip) - kd * vel_hip
-
-                # 3. Knee (Calf): Brute Force -> Extend (+30 Nm)
-                i_knee = indices[2]
-                sim.ctrl0[i_knee] = 30.0
-
-            sim.step(sim.ctrl0)
-            sim.sync()  # No viewer, just maintain timing
-
-            # Print progress every 1 second
-            if int(sim.sim_time * 10) % 10 == 0 and sim.sim_time > 0:
-                lift_status = "LIFT" if 2.0 <= sim.sim_time <= 3.0 else "GROUND"
-                # print(f"T:{sim.sim_time:.1f}s | {lift_status} | GT(FL):{ground_truth[0]} | Prob(FL):{p_foot_contact[0].item():.2f}")
+            run_step()
     else:
-        # Viewer mode
         with sim.launch_viewer() as viewer:
             while viewer.is_running() and sim.sim_time < SIMUL_TIME:
-                # --- [A] Algorithms ---
-                fz = ff.get_foot_force(sim.data)
-                pz = fh.get_foot_height(sim.data)
-                p_foot_contact = cm.prob_contact(sim.data, pz, fz)
-
-                ground_truth = get_ground_truth_contact(sim.model, sim.data, foot_ids)
-                plotter.update(p_foot_contact, ground_truth)
-
-                # --- [C] Controller: All Legs Stiff Standing ---
-                sim.ctrl0[:] = 0.0
-
-                # Loop through all 4 legs
-                target_abds = [0.174, -0.174, 0.174, -0.174]
-                target_thigh = [-0.1, -0.1, 0.8, 0.8]
-                for leg_idx in range(4):
-                    indices = legs_indices[leg_idx] # [Abd, Hip, Knee] indices for this leg
-
-                    # 1. Abduction: PD Control -> Hold at 0.0
-                    i_abd = indices[0]
-                    curr_abd = sim.data.qpos[7 + i_abd]
-                    vel_abd = sim.data.qvel[6 + i_abd]
-                    sim.ctrl0[i_abd] = kp * (target_abds[leg_idx] - curr_abd) - kd * vel_abd
-
-                    # 2. Hip (Thigh): PD Control -> Hold at 0.8
-                    i_hip = indices[1]
-                    curr_hip = sim.data.qpos[7 + i_hip]
-                    vel_hip = sim.data.qvel[6 + i_hip]
-                    sim.ctrl0[i_hip] = kp * (target_thigh[leg_idx] - curr_hip) - kd * vel_hip
-
-                    # 3. Knee (Calf): Brute Force -> Extend (+30 Nm)
-                    i_knee = indices[2]
-                    sim.ctrl0[i_knee] = 30.0
-
-                # Display debug info including lift status
-                lift_status = "LIFT" if 2.0 <= sim.sim_time <= 3.0 else "GROUND"
-                debug_txt = f"T:{sim.sim_time:.1f}s | {lift_status} | GT(FL):{ground_truth[0]} | Prob(FL):{p_foot_contact[0].item():.2f}"
-
-                sim.step(sim.ctrl0)
-                sim.add_text(viewer, debug_txt)
-                sim.sync(viewer)
+                run_step(viewer)
 
     # Save plot after simulation ends
     print(f"\nSimulation completed at t={sim.sim_time:.2f}s")
