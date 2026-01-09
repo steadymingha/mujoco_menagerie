@@ -81,8 +81,8 @@ class Go2Sim:
         Applies automated lifting force to robot base periodically.
         Cycle: 2s ground -> 1s lift, repeated.
         """
-        cycle_period = 3.0  # Total cycle: 2s ground + 1s lift
-        ground_duration = 2.0
+        cycle_period = 2.0  # Total cycle: 2s ground + 1s lift
+        ground_duration = 1.0
 
         # Time within current cycle
         t_in_cycle = self.sim_time % cycle_period
@@ -146,7 +146,7 @@ def get_ground_truth_contact(model, data, foot_geom_ids):
             
     return ground_truth
 
-SIMUL_TIME = 9.0  # Simulation duration in seconds (3 cycles) 
+SIMUL_TIME = 11.0  # Simulation duration in seconds (3 cycles) 
 
 def main():
     # Parse command line arguments
