@@ -29,12 +29,14 @@ class Go2Sim:
         
         self.last_render_time = time.time()
         
-        # 2. Reset & Manual Pose Init
+        # # 2. Reset & Manual Pose Init
+        # mujoco.mj_resetData(self.model, self.data)
+        # # Start Position: High enough
+        # self.data.qpos[0:3] = [0, 0, 0.5] 
+        # self.data.qpos[3:7] = [1, 0, 0, 0]
         mujoco.mj_resetData(self.model, self.data)
-        
-        # Start Position: High enough
-        self.data.qpos[0:3] = [0, 0, 0.5] 
-        self.data.qpos[3:7] = [1, 0, 0, 0]
+        mujoco.mj_resetDataKeyframe(self.model, self.data, 0)  # 'home' keyframe 적용
+        mujoco.mj_forward(self.model, self.data)
 
         # Init Pose for ALL legs: [Abd, Hip, Knee] -> [0.0, 0.8, -1.5]
         # This matches our target controller to minimize startup jump
@@ -101,7 +103,7 @@ class Go2Sim:
             self.data.ctrl[:] = self.ctrl0 
         
         # Apply automated lift before stepping
-        self.apply_automated_lift(self.data)
+        # self.apply_automated_lift(self.data)
         
         mujoco.mj_step(self.model, self.data)
         
@@ -146,7 +148,7 @@ def get_ground_truth_contact(model, data, foot_geom_ids):
             
     return ground_truth
 
-SIMUL_TIME = 11.0  # Simulation duration in seconds (3 cycles) 
+SIMUL_TIME = 5.0#11.0  # Simulation duration in seconds (3 cycles) 
 
 def main():
     # Parse command line arguments
@@ -195,7 +197,7 @@ def main():
         pz = fh.get_foot_height(sim.data)
         p_foot_contact = cm.prob_contact(sim.data, pz, fz)
         ground_truth = get_ground_truth_contact(sim.model, sim.data, foot_ids)
-        plotter.update(p_foot_contact, ground_truth)
+        plotter.update(p_foot_contact, ground_truth, fz=fz, pz=pz)
 
         # --- [C] Controller: All Legs Stiff Standing ---
         sim.ctrl0[:] = 0.0

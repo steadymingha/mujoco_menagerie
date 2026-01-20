@@ -191,18 +191,20 @@ class FootForce:
         ]
         joint_angle_data = np.array(joint_angle_list)[:, np.newaxis]
 
-        q_dot = np.vstack((data.sensor('global_linvel').data[:, np.newaxis],
-                          data.sensor('global_angvel').data[:, np.newaxis],
-                          joint_angle_data))
-
+        # q_dot = np.vstack((data.sensor('global_linvel').data[:, np.newaxis],
+        #                   data.sensor('global_angvel').data[:, np.newaxis],
+        #                   joint_angle_data))
+        q_dot = data.qvel[:, np.newaxis]
         p = self.M @ q_dot
         
         ### C^T *q_dot - g ###
-        mujoco.mj_inverse(self.model, data)
-        coriolis_gravity = data.qfrc_bias[:, np.newaxis] # 18x1  C.T*q_dot - g 
-        
+        # Gemini said it's wrong code:
+        # mujoco.mj_inverse(self.model, data)
+        # coriolis_gravity = data.qfrc_bias[:, np.newaxis] # 18x1  C.T*q_dot - g 
+        coriolis_gravity = data.qfrc_bias[:, np.newaxis]
+
         ## Dynamic effects for Disturbance torque
-        dyn_terms = beta*p + S_T@self.tau + coriolis_gravity#filtered dynamic effect
+        dyn_terms = beta*p + S_T@self.tau - coriolis_gravity#filtered dynamic effect
         y = (1-gamma) * dyn_terms + gamma * self.y_pre
         
         ## final disturbance torque

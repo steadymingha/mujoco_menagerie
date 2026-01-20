@@ -38,7 +38,8 @@ class ContactModel:
     
     def kalman(self):
         # (1) Prediction.
-        x_pred = self.A @ self.x_esti + self.B @ self.u
+        # x_pred = self.A @ self.x_esti + self.B @ self.u
+        x_pred = self.x_esti
         Sigma_pred = self.A @ self.Sigma @ self.A.T + self.Sigma_w
 
         # (2) Kalman Gain.
