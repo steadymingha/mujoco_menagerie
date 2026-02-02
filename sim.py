@@ -5,8 +5,8 @@ import mujoco.viewer
 from pathlib import Path
 import enum
 import contextlib
-from mh.foot_mechanics import *
-from mh.ground_contact import ContactModel
+from core.foot_mechanics import *
+from core.ground_contact import ContactModel
 from graph import FootContactPlotter
 
 # --- Simulator Wrapper ---

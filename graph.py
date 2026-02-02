@@ -38,7 +38,7 @@ class FootContactPlotter:
         # Contact subplots (0-3)
         for i in range(4):
             line_e, = self.axes[i].plot(np.arange(max_len), self.queues_est[i],
-                                      color='blue', lw=1.5, label='Estimate')
+                                      color='blue', lw=1.5, linestyle=':', label='Estimate')
             line_t, = self.axes[i].plot(np.arange(max_len), self.queues_truth[i],
                                       color='orange', lw=2, linestyle='--', alpha=0.7, label='Truth')
             self.lines_est.append(line_e)

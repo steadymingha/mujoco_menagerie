@@ -164,7 +164,7 @@ class FootForce:
             leg_idx = LEG_INDICES[leg_name]
             tau_d_1leg = tau_d[leg_idx]
             J = self.get_foot_force_jacobian(data, leg_name)
-            foot_force = np.linalg.pinv(J.T) @ tau_d_1leg
+            foot_force = np.linalg.pinv(J.T, rcond=0.05) @ tau_d_1leg
             foot_force_z.append(foot_force[-1])
 
         return np.vstack(foot_force_z)
@@ -191,10 +191,10 @@ class FootForce:
         ]
         joint_angle_data = np.array(joint_angle_list)[:, np.newaxis]
 
-        # q_dot = np.vstack((data.sensor('global_linvel').data[:, np.newaxis],
-        #                   data.sensor('global_angvel').data[:, np.newaxis],
-        #                   joint_angle_data))
-        q_dot = data.qvel[:, np.newaxis]
+        q_dot = np.vstack((data.sensor('global_linvel').data[:, np.newaxis],
+                          data.sensor('global_angvel').data[:, np.newaxis],
+                          joint_angle_data))
+        # q_dot = data.qvel[:, np.newaxis]
         p = self.M @ q_dot
         
         ### C^T *q_dot - g ###

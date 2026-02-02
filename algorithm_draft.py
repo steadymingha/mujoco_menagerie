@@ -2,8 +2,8 @@
 
 import mujoco
 import numpy as np
-from mh.foot_mechanics import *
-from mh.ground_contact import ContactModel
+from core.foot_mechanics import *
+from core.ground_contact import ContactModel
 import matplotlib.pyplot as plt
 
 SIMUL_TIME = 1 # sec

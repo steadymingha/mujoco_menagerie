@@ -15,7 +15,7 @@ class ContactModel:
         n = 4
         self.A = np.zeros((4,4))
         self.H = np.vstack((np.eye(n), np.eye(n)))
-        self.Sigma_w = 999#0.998 * np.eye(n)
+        self.Sigma_w = 0.998 * np.eye(n)
         self.B = np.eye(n)
 
         # Measurement
@@ -38,13 +38,13 @@ class ContactModel:
     
     def kalman(self):
         # (1) Prediction.
-        # x_pred = self.A @ self.x_esti + self.B @ self.u
-        x_pred = self.x_esti
+        x_pred = self.A @ self.x_esti + self.B @ self.u
+        # x_pred = self.x_esti
         Sigma_pred = self.A @ self.Sigma @ self.A.T + self.Sigma_w
 
         # (2) Kalman Gain.
-        self.K = Sigma_pred @ self.H.T @ (self.H @ Sigma_pred @ self.H.T + self.Sigma_v)
-
+        # self.K = Sigma_pred @ self.H.T @ (self.H @ Sigma_pred @ self.H.T + self.Sigma_v)
+        self.K = Sigma_pred @ self.H.T @ np.linalg.inv(self.H @ Sigma_pred @ self.H.T + self.Sigma_v)
         # (3) Estimation.
         self.x_esti = x_pred + self.K @ (self.z - self.H @ x_pred)
 
@@ -58,7 +58,8 @@ class ContactModel:
         # model update
         self.update(data, foot_height, foot_force)
         p_foot_contact = self.kalman()
-        return p_foot_contact
+        p_foot_contact_clip = np.where(p_foot_contact >= 0.5, 1, 0)
+        return p_foot_contact_clip
     
     # LEGS = ['front_left', 'front_right', 'hind_left', 'hind_right']
     def get_current_phase(self, t):
@@ -96,16 +97,22 @@ class ContactModel:
         return prior_p[:, np.newaxis]
     
     def prob_contact_given_foot_height(self, pz):
-        mu_zg = 0 # mean
-        sigma_zg = math.sqrt(0.1) # var
+        # mu_zg = 0 # mean
+        # sigma_zg = math.sqrt(0.1) # var
+        #claude value
+        mu_zg = 0.03      
+        sigma_zg = 0.005 
 
         p_c_pz = 0.5 * (1 + erf((mu_zg-pz)/(sigma_zg*math.sqrt(2))))
         # print(f'foot height : \n {p_c_pz[0].item():.2f}, {p_c_pz[1].item():.2f}')
         return p_c_pz
 
     def prob_contact_given_contact_force(self, fz):
-        mu_fc = 40
-        sigma_fc = math.sqrt(25)
+        # mu_fc = 40
+        # sigma_fc = math.sqrt(25)
+        #claude
+        mu_fc = 15        # 더 낮게
+        sigma_fc = 5.0     # 더 넓게
 
         p_c_fz = 0.5 * (1 + erf((fz-mu_fc)/(sigma_fc*math.sqrt(2))))
         # print(f'contact force : \n {p_c_fz[0].item():.2f}, {p_c_fz[1].item():.2f}')

@@ -1,3 +1,5 @@
+import os
+os.environ['DISPLAY'] = ':0'
 import time
 import numpy as np
 import mujoco
@@ -7,6 +9,7 @@ import enum
 import contextlib
 import argparse
 from datetime import datetime
+import mediapy as media
 from core.foot_mechanics_claude import *
 from core.ground_contact import ContactModel
 from graph import FootContactPlotter
@@ -31,16 +34,14 @@ class Go2Sim:
         
         # 2. Reset & Manual Pose Init
         mujoco.mj_resetData(self.model, self.data)
+        
         # Start Position: High enough
         self.data.qpos[0:3] = [0, 0, 0.5] 
         self.data.qpos[3:7] = [1, 0, 0, 0]
-        # mujoco.mj_resetData(self.model, self.data)
-        # mujoco.mj_resetDataKeyframe(self.model, self.data, 0)  # 'home' keyframe 적용
-        # mujoco.mj_forward(self.model, self.data)
 
-        # Init Pose for ALL legs: [Abd, Hip, Knee] -> [0.0, 0.8, -1.5]
-        # This matches our target controller to minimize startup jump
-        pose_init = [0.0, 0.8, -1.5]
+        # Init Pose for ALL legs: [Abd, Hip, Knee] -> [0.0, 0.8, -1.8]
+        # Knee is set to -1.8 to stay within joint limit [-2.72, -0.84]
+        pose_init = [0.0, 0.8, -1.8]
         for i in range(4):
             base = 7 + i*3
             self.data.qpos[base:base+3] = pose_init
@@ -103,7 +104,7 @@ class Go2Sim:
             self.data.ctrl[:] = self.ctrl0 
         
         # Apply automated lift before stepping
-        # self.apply_automated_lift(self.data)
+        self.apply_automated_lift(self.data)
         
         mujoco.mj_step(self.model, self.data)
         
@@ -148,13 +149,15 @@ def get_ground_truth_contact(model, data, foot_geom_ids):
             
     return ground_truth
 
-SIMUL_TIME = 5.0#11.0  # Simulation duration in seconds (3 cycles) 
+SIMUL_TIME = 5.0  # Simulation duration in seconds
 
 def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='MuJoCo Go2 Robot Simulation')
     parser.add_argument('--headless', action='store_true',
-                        help='Run simulation without viewer (headless mode)', default=False)
+                        help='Run simulation without viewer (headless mode)', default=True)
+    parser.add_argument('--record', type=str, default="output.mp4",
+                        help='Record video to specified file (e.g., output.mp4). If not specified, no recording.')
     args = parser.parse_args()
 
     model_file = './unitree_go2/scene_mjx.xml'
@@ -186,14 +189,37 @@ def main():
     if args.headless:
         print("Running in HEADLESS mode (no viewer)")
 
+    # Video recording setup
+    frames = []
+    renderer = None
+    record_fps = 30
+    frame_interval = 1.0 / record_fps
+    next_frame_time = 0.0
+    if not args.headless and args.record:
+        print(f"Recording video to: {args.record}")
+        renderer = mujoco.Renderer(sim.model, height=480, width=640)
+
+    # ============================================
     # Target positions for controller
-    target_abds = [0.174, -0.174, 0.174, -0.174]
-    target_thigh = [-0.1, -0.1, 0.8, 0.8]
-    # target_abds = [0,0,0,0]
-    # target_thigh = [0,0,0,0]
+    # All joints use PD control to stay within joint limits
+    # ============================================
+    # Joint limits from XML:
+    #   - Abd (hip_joint): [-1.05, 1.05]
+    #   - Hip (thigh_joint): [-1.57, 3.49]
+    #   - Knee (calf_joint): [-2.72, -0.84]
+    # ============================================
+    target_abds = [0.0, 0.0, 0.0, 0.0]
+    target_hips = [0.8, 0.8, 0.8, 0.8]
+    target_knees = [-1.8, -1.8, -1.8, -1.8]  # Within limit [-2.72, -0.84]
+
+    # Joint limit margins (to avoid hitting limits)
+    KNEE_LIMIT_UPPER = -0.85  # Slightly inside the limit -0.84
+    KNEE_LIMIT_LOWER = -2.70  # Slightly inside the limit -2.72
 
     def run_step(viewer=None):
         """Common simulation step logic for both headless and viewer modes."""
+        nonlocal next_frame_time
+
         # --- [A] Algorithms ---
         fz = ff.get_foot_force(sim.data)
         pz = fh.get_foot_height(sim.data)
@@ -201,7 +227,13 @@ def main():
         ground_truth = get_ground_truth_contact(sim.model, sim.data, foot_ids)
         plotter.update(p_foot_contact, ground_truth, fz=fz, pz=pz)
 
-        # --- [C] Controller: All Legs Stiff Standing ---
+        # --- [B] Video Recording ---
+        if renderer and sim.sim_time >= next_frame_time:
+            renderer.update_scene(sim.data)
+            frames.append(renderer.render().copy())
+            next_frame_time += frame_interval
+
+        # --- [C] Controller: All Legs PD Control ---
         sim.ctrl0[:] = 0.0
         for leg_idx in range(4):
             indices = legs_indices[leg_idx]  # [Abd, Hip, Knee] indices for this leg
@@ -216,11 +248,17 @@ def main():
             i_hip = indices[1]
             curr_hip = sim.data.qpos[7 + i_hip]
             vel_hip = sim.data.qvel[6 + i_hip]
-            sim.ctrl0[i_hip] = kp * (target_thigh[leg_idx] - curr_hip) - kd * vel_hip
+            sim.ctrl0[i_hip] = kp * (target_hips[leg_idx] - curr_hip) - kd * vel_hip
 
-            # 3. Knee (Calf): Brute Force -> Extend (+30 Nm)
+            # 3. Knee (Calf): PD Control with joint limit protection
             i_knee = indices[2]
-            sim.ctrl0[i_knee] = 30.0
+            curr_knee = sim.data.qpos[7 + i_knee]
+            vel_knee = sim.data.qvel[6 + i_knee]
+            
+            # Clamp target to stay within joint limits
+            target_knee_clamped = np.clip(target_knees[leg_idx], KNEE_LIMIT_LOWER, KNEE_LIMIT_UPPER)
+            
+            sim.ctrl0[i_knee] = kp * (target_knee_clamped - curr_knee) - kd * vel_knee
 
         sim.step(sim.ctrl0)
 
@@ -243,6 +281,12 @@ def main():
 
     # Save plot after simulation ends
     print(f"\nSimulation completed at t={sim.sim_time:.2f}s")
+
+    # Save video if recording was enabled
+    if args.record and frames:
+        media.write_video(args.record, frames, fps=record_fps)
+        print(f"Video saved: {args.record} ({len(frames)} frames)")
+        renderer.close()
 
     # Generate timestamp filename (format: YYMMDD_HHMM.png)
     timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
