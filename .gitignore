@@ -4,3 +4,4 @@ __pycache__/graph.cpython-312.pyc
 __pycache__/sim.cpython-312.pyc
 core/__pycache__/foot_mechanics.cpython-312.pyc
 core/__pycache__/ground_contact.cpython-312.pyc
+core/__pycache__/foot_mechanics_claude.cpython-312.pyc
