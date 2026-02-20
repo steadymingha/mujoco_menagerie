@@ -9,6 +9,8 @@ class ContactModel:
         self.T = 3 #0.6 # gait period [sec]
         self.THRESHOLD = 0.9
         
+        self.s_phi = 0
+        self.phi = 0
 
     def kalman_param(self):
         # System model
@@ -70,12 +72,15 @@ class ContactModel:
 
         s_phi = np.where(phi < self.THRESHOLD, 1, 0) # phi < threshold, stance state(1)
         
+        self.s_phi = s_phi
+        self.phi = phi
+
         return phi, s_phi
     
     def prediction_prob_model(self, data): #prob_contact_given_state_subphase
         ## model parameter ##
-        mean_cbar = np.array([0, 1])
-        var_cbar_sq = 2#0.05  # swing cbar 1 is better
+        mean_cbar = np.array([0, 1]) # mu
+        var_cbar_sq = 2#0.05  # swing cbar 1 is better #sigma
         mean_c = np.array([0, 1])
         var_c_sq = 0.2#0.05 # 0.3=1=9999  0.2 is best
         

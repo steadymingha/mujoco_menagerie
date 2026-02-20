@@ -1,74 +1,111 @@
-# MIT Cheetah 3: Design and Control of a Robust, Dynamic Quadruped Robot
+import os
+os.environ['DISPLAY'] = ':0'
+import time
+import mujoco
+import mujoco.viewer
+from pathlib import Path
+import enum
+import contextlib
+import argparse
+from datetime import datetime
+import mediapy as media
+from core.foot_mechanics_claude import *
+from core.ground_contact import ContactModel
+from core.control import JointController
+from graph import FootContactPlotter
+from claude_sim import *
+from core.fsm import QuadrupedContactFSM
 
-# 0. User Cmd
-# 1. High level planning ()
-# 2. leg and body control
-# 3. State Estimation
+SIMUL_TIME = 5.0  # Simulation duration in seconds
 
-# p dot = CoM translational vel
-# psi dot = CoM turning rate
+def main():
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='MuJoCo Go2 Robot Simulation')
+    parser.add_argument('--headless', action='store_true',
+                        help='Run simulation without viewer (headless mode)', default=True)
+    parser.add_argument('--record', type=str, default="output.mp4",
+                        help='Record video to specified file (e.g., output.mp4). If not specified, no recording.')
+    args = parser.parse_args()
 
-class HighLevelPlanning:
-    def __init__(self):
-        pass
-    def desired_CoM_cmd(self,psi_dot,p_dot):
-        pass
+    model_file = './unitree_go2/scene_mjx.xml'
+    sim = Go2Sim(model_file)
 
-    def gait_scheduler(self):
-        pass
+    ff = FootForce(sim.model)
+    fh = FootHeight()
+    cm = ContactModel()
+    ctrl = JointController(sim)
 
-class Controller:
-    def __init__(self):
-        pass
-    def force_controller(self):
-        pass
-    def swing_leg_controller(self):
-        pass
+    # Disable real-time display, will save plot at the end
+    plotter = FootContactPlotter(max_len=2000, draw_interval=1, enable_display=False)
+    foot_ids = get_foot_ids(sim.model)
 
-    def joint_pd_controller(self):
-        pass
+    print("Simulation Loop Started...")
+    print(f"Running for {SIMUL_TIME} seconds...")
+    if args.headless:
+        print("Running in HEADLESS mode (no viewer)")
 
+    # Video recording setup
+    frames = []
+    renderer = None
+    record_fps = 30
+    frame_interval = 1.0 / record_fps
+    next_frame_time = 0.0
+    if not args.headless and args.record:
+        print(f"Recording video to: {args.record}")
+        renderer = mujoco.Renderer(sim.model, height=480, width=640)
 
-class StateObserver:
-    def __init__(self):
-        pass
-    def CoM_state(self): # KF
-        pass
-    def leg_contact_detector(self):
-        pass
+    def run_step(viewer=None):
+        nonlocal next_frame_time
 
-class Cheetah:
-    def __init__(self):
-        pass
+        # --- [A] Algorithms ---
+        fz = ff.get_foot_force(sim.data)
+        pz = fh.get_foot_height(sim.data)
+        p_foot_contact = cm.prob_contact(sim.data, pz, fz)
+        ground_truth = get_ground_truth_contact(sim.model, sim.data, foot_ids)
+        plotter.update(p_foot_contact, ground_truth, fz=fz, pz=pz)
 
-    def force_model(self):
-        pass
-    def p_psi_to_torque(self):
-        #jacobian transpose
-        pass
+        # --- [B] Video Recording ---
+        if renderer and sim.sim_time >= next_frame_time:
+            renderer.update_scene(sim.data)
+            frames.append(renderer.render().copy())
+            next_frame_time += frame_interval
 
+        # --- [C] Controller ---
+        ctrl.compute()
+        sim.step(sim.ctrl0)
 
-## leg-independent phase variable to schedule nominal contact and swing phases.
+        # Viewer-specific: display debug text
+        if viewer:
+            debug_txt = f"T:{sim.sim_time:.1f}s | GT(FL):{ground_truth[0]} | Prob(FL):{p_foot_contact[0].item():.2f}"
+            sim.add_text(viewer, debug_txt)
+
+        sim.sync(viewer)
+
+    # Run simulation with or without viewer
+    if args.headless:
+        while sim.sim_time < SIMUL_TIME:
+            run_step()
+    else:
+        with sim.launch_viewer() as viewer:
+            while viewer.is_running() and sim.sim_time < SIMUL_TIME:
+                run_step(viewer)
+
+    # Save plot after simulation ends
+    print(f"\nSimulation completed at t={sim.sim_time:.2f}s")
+
+    # Save video if recording was enabled
+    if args.record and frames:
+        media.write_video(args.record, frames, fps=record_fps)
+        print(f"Video saved: {args.record} ({len(frames)} frames)")
+        renderer.close()
+
+    # Generate timestamp filename (format: YYMMDD_HHMM.png)
+    timestamp = datetime.now().strftime("%y%m%d_%H%M%S")
+    filename = f"results/{timestamp}.png"
+
+    plotter.save(filename)
+    plotter.close()
+    print("Done!")
+
 if __name__ == "__main__":
-    import mujoco
-    import numpy as np
-
-    xml_path = './unitree_go2/go2_mjx.xml'
-    model = mujoco.MjModel.from_xml_path(xml_path)
-    data = mujoco.MjData(model)
-
-    for i in range(19):
-        mujoco.mj_step(model, data)
-
-        orientation_data = data.sensor('orientation').data
-        position_data = data.sensor('global_position').data
-        print(f"joint sensor data test {data.sensor('knee_front_left_pos').data}")
-
-
-        p_body_world = data.body('base').xpos 
-        q_body_world = data.body('base').xquat
-        print(f"{p_body_world} are world base coords")
-        print(f"{q_body_world} are world quaternion coords")
-        # print(f"Orientation (Quaternion): {orientation_data}")
-        # print(f"Global Position (x, y, z): {position_data}")
-        print("==========================================")
+    main()

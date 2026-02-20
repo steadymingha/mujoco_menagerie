@@ -65,6 +65,8 @@ class FootHeight:
 
         return np.vstack([foot_x, foot_y, foot_z])
 
+    def get_foot_position(self, data):
+        pass
     def get_foot_height(self, data):
         """월드 프레임에서의 발 높이 계산"""
         foot_body = self.cal_foot_body_position(data)
