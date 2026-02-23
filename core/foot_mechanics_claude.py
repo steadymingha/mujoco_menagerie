@@ -65,22 +65,39 @@ class FootHeight:
 
         return np.vstack([foot_x, foot_y, foot_z])
 
-    def get_foot_position(self, data):
-        pass
+    def get_foot_position(self):
+        return self.foot_world
+    
+    def get_CoM_velocity(self, data):
+        # subtree_com에 대응
+        data.subtree_linvel[0]    # subtree CoM의 선속도 (3,) - world frame
+        # xipos에 대응  
+        data.cvel[0]              # body의 속도 (6,) - [angular(3), linear(3)]
+                                # world frame, CoM 기준
+        return data.cvel[0]
+    
+    def get_CoM_position(self, data):
+        return data.subtree_com[0] # CoM of base + all legs for GO2
+        # return data.xipos[0] #CoM of base body(inertial applying) for Cheetah3
+    
     def get_foot_height(self, data):
         """월드 프레임에서의 발 높이 계산"""
         foot_body = self.cal_foot_body_position(data)
-        base_z = data.qpos[2]
+        # base_z = data.qpos[2]
+        base_world = data.qpos[:3] #위치+쿼터니언+관절각도
         
         # 쿼터니언으로 회전 행렬 생성
         quat = data.qpos[3:7]
         rot_matrix = self.quaternion_to_rotation_matrix(quat)
         
         # 발 위치를 월드 프레임으로 변환
-        foot_world = rot_matrix @ foot_body
-        foot_z_world = foot_world[2, :] + base_z
+        foot_rotated = rot_matrix @ foot_body
+        self.foot_world = foot_rotated + base_world[:, np.newaxis]
+        # foot_z_world = foot_world[2, :] + base_z
+        foot_z_world = self.foot_world[2,:][:, np.newaxis]
         
-        return foot_z_world[:, np.newaxis]
+        # return foot_z_world[:, np.newaxis]
+        return foot_z_world
 
     def quaternion_to_rotation_matrix(self, quat):
         """쿼터니언을 회전 행렬로 변환"""

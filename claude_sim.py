@@ -186,6 +186,8 @@ def main():
 
     print("Simulation Loop Started...")
     print(f"Running for {SIMUL_TIME} seconds...")
+    current_timestep = sim.model.opt.timestep
+    print(f"current timestep: {current_timestep} sec")
     if args.headless:
         print("Running in HEADLESS mode (no viewer)")
 

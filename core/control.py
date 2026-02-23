@@ -98,7 +98,20 @@ class GaitController:
 
         return p_CoM_desired
 
-    def posture_adjustment():
+    def posture_adjustment(self, p_feet):  # for desired posture
+        px = p_feet[0,:][:, np.newaxis]
+        py = p_feet[1,:][:, np.newaxis]
+        pz = p_feet[2,:][:, np.newaxis]
+        W = np.concatenate((np.ones((4, 1)), px, py) , axis=1)
+        a = np.linalg.lstsq(W, pz, rcond=None)[0]
+
+        return a
+
+        #### p_feet format ####
+        #      | 발1 | 발2 | 발3| 발4
+        # 0행(x)| x1 ​| x2 ​| x3​ | x4​
+        # 1행(y)| y1 ​| y2 ​| y3​ | y4​
+        # 2행(z)| z1 | z2 ​| z3 ​| z4​
         
     def force_PD_ctrl(self, p_c_d, ):
         pass
