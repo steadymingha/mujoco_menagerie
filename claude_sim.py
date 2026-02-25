@@ -16,7 +16,7 @@ from graph import FootContactPlotter
 
 # --- Simulator Wrapper ---
 class Go2Sim:
-    def __init__(self, model_path: str, dt: float = 0.002):
+    def __init__(self, model_path: str, dt: float = 0.001):
         self.model_path = Path(model_path)
         if not self.model_path.exists():
             raise FileNotFoundError(f"Model file not found at {self.model_path}")
@@ -155,7 +155,7 @@ def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='MuJoCo Go2 Robot Simulation')
     parser.add_argument('--headless', action='store_true',
-                        help='Run simulation without viewer (headless mode)', default=True)
+                        help='Run simulation without viewer (headless mode)', default=False)
     parser.add_argument('--record', type=str, default="output.mp4",
                         help='Record video to specified file (e.g., output.mp4). If not specified, no recording.')
     args = parser.parse_args()
@@ -168,7 +168,8 @@ def main():
     cm = ContactModel()
 
     # Disable real-time display, will save plot at the end
-    plotter = FootContactPlotter(max_len=2000, draw_interval=1, enable_display=False)
+    max_len = int(SIMUL_TIME / sim.model.opt.timestep)
+    plotter = FootContactPlotter(max_len=max_len, draw_interval=1, enable_display=False)
     foot_ids = get_foot_ids(sim.model)
 
     # Gains for PD Control
