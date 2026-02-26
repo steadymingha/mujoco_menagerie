@@ -36,7 +36,8 @@ def main():
     ctrl = JointController(sim)
 
     # Disable real-time display, will save plot at the end
-    plotter = FootContactPlotter(max_len=2000, draw_interval=1, enable_display=False)
+    max_len = int(SIMUL_TIME / sim.model.opt.timestep)
+    plotter = FootContactPlotter(max_len=max_len, draw_interval=1, enable_display=False)
     foot_ids = get_foot_ids(sim.model)
 
     print("Simulation Loop Started...")

@@ -1,6 +1,7 @@
 import numpy as np
 from scipy.special import erf
 import math
+from util import *
 
 class JointController:
     """Joint-space PD controller for Go2.
@@ -52,8 +53,11 @@ class JointController:
 
 
 class GaitController:
-    def __init__(self, leg_position):
-        p = leg_position
+    def __init__(self):#, leg_position):
+        # p = leg_position
+
+        self.pcom_d_prev = 0
+        self.pcom_prev = 0
     # {FR, FL, BR, BL}
     
     def weighting_factor(self, s_phi, phi):
@@ -104,17 +108,110 @@ class GaitController:
         pz = p_feet[2,:][:, np.newaxis]
         W = np.concatenate((np.ones((4, 1)), px, py) , axis=1)
         a = np.linalg.lstsq(W, pz, rcond=None)[0]
+        
+        pitch_d = -np.arctan(a[1]) # Slope along the x-axis
+        roll_d = np.arctan(a[2])    # Slope along the y-axis
+        
+        return pitch_d, roll_d
 
-        return a
-
-        #### p_feet format ####
+        #### p_feet format ####  3x4
         #      | 발1 | 발2 | 발3| 발4
         # 0행(x)| x1 ​| x2 ​| x3​ | x4​
         # 1행(y)| y1 ​| y2 ​| y3​ | y4​
         # 2행(z)| z1 | z2 ​| z3 ​| z4​
+    
+    def translational_acceleration_cmd(self, data, pcom_d, pcom, dt):
+        Kp_p = 100.0
+        Kd_p = 5.0
+
+        if self.pcom_d_prev == 0: 
+            self.pcom_d_prev = pcom_d
+            self.pcom_prev = pcom
+
+        pdotcom_d = (pcom_d - self.pcom_d_prev) / dt
+        pdotcom = data.subtree_linvel[0] #(pcom - self.pcom_prev) / dt
+
+
+        p2dotcom_d = Kp_p * (pcom_d - p) + Kd_p * (pdotcom_d - pdotcom)
         
-    def force_PD_ctrl(self, p_c_d, ):
+        self.pcom_d_prev = pcom_d
+        self.pcom_prev = pcom
+
+        return p2dotcom_d
+    
+    def angular_acceleration_cmd(self, data, roll_d, pitch_d, dt, yaw_d=0):
+        Kp_w = 100.0
+        kd_w = 5.0
+
+        q = data.sensor('orientation').data
+        R = quaternion_to_R(q)
+        R_d = euler123_to_R(roll_d, pitch_d, yaw_d)
+
+        # 목표 오일러각 속도 (유한차분)
+        euler_d = np.array([roll_d, pitch_d, yaw_d])
+        if not hasattr(self, '_prev_euler_d'):
+            self._prev_euler_d = euler_d.copy()
+
+        eulerdot_d = (euler_d - self._prev_euler_d) / dt
+        self._prev_euler_d = eulerdot_d.copy()
+
+        # 자코비안으로 body frame 목표 각속도 변환
+        B = euler123_jacobian(pitch_d, yaw_d)
+        omega_d = B @ eulerdot_d
+
+        omega = data.sensor('gyro').data  # body frame 현재 각속도 [wx, wy, wz]
+        omegadot_b_d = Kp_w * self.SO3_logmap(R_d @ R.T) + kd_w * (omega_d - omega)
+
+        return omegadot_b_d
+    
+    def high_level_controller(self, model, data, p, s_phi, phi, yaw_d = 0): # p : estimation, q : sensor(gyro)
+        pcom_d = self.predictive_support_polygon(p, s_phi, phi)
+        pitch_d, roll_d = self.posture_adjustment(p)
+        # yaw_d = 0 # user input
+        dt = model.opt.timestep
+        pcom = data.subtree_com[0]
+
+        p2dotcom_d = self.translational_acceleration_cmd(pcom_d, pcom, dt)
+        omegadotb_d = self.angular_acceleration_cmd(data, roll_d, pitch_d, dt)
+
+        b_d = self.force_desired(model, data, p2dotcom_d, omegadotb_d)
+    
+    def force_desired(self, model, data, p2dotcom_d, omegadot_b_d):
+        m = model.body_subtreemass[0]
+        g = np.array([0, 0, 9.8]).T
+
+        cinert_data = data.cinert[1]  # 인덱스 1이 보통 base body입니다.
+
+        # 2. 3x3 회전 관성 행렬(Inertia Tensor) 성분 추출
+        # 대각 성분 (Ixx, Iyy, Izz)
+        ixx = cinert_data[4]
+        iyy = cinert_data[5]
+        izz = cinert_data[6]
+
+        # 비대각 성분 (Ixy, Ixz, Iyz)
+        ixy = cinert_data[7]
+        ixz = cinert_data[8]
+        iyz = cinert_data[9]
+
+        # 3. I_G 행렬 (world frame, 3x3 Symmetric Matrix)
+        I_G_world = np.array([
+            [ixx, ixy, ixz],
+            [ixy, iyy, iyz],
+            [ixz, iyz, izz]
+        ])
+
+        # 4. world frame → body frame 변환: I_body = R.T @ I_world @ R
+        q = data.sensor('orientation').data
+        R = quaternion_to_R(q)
+        I_G = R.T @ I_G_world @ R
+
+        b_d = np.array([m * (p2dotcom_d + g), I_G @ omegadot_b_d]).T
+
+        return b_d
+        
+    def balance_pd_ctrl(self):
         pass
+
 
     
 
