@@ -11,7 +11,7 @@ from datetime import datetime
 import mediapy as media
 from core.foot_mechanics_claude import *
 from core.ground_contact import ContactModel
-from core.control import JointController
+from core.control import JointController, GaitController
 from graph import FootContactPlotter
 from claude_sim import *
 from core.fsm import QuadrupedContactFSM
@@ -33,7 +33,12 @@ def main():
     ff = FootForce(sim.model)
     fh = FootHeight()
     cm = ContactModel()
+
+    gait = GaitController()
     ctrl = JointController(sim)
+
+
+
 
     # Disable real-time display, will save plot at the end
     max_len = int(SIMUL_TIME / sim.model.opt.timestep)
@@ -62,6 +67,8 @@ def main():
         fz = ff.get_foot_force(sim.data)
         pz = fh.get_foot_height(sim.data)
         p_foot_contact = cm.prob_contact(sim.data, pz, fz)
+
+        # --- [A] verification ---
         ground_truth = get_ground_truth_contact(sim.model, sim.data, foot_ids)
         plotter.update(p_foot_contact, ground_truth, fz=fz, pz=pz)
 
@@ -72,6 +79,9 @@ def main():
             next_frame_time += frame_interval
 
         # --- [C] Controller ---
+
+        gait.high_level_controller(sim, fh.get_foot_position(), cm.s_phi, cm.phi )
+
         ctrl.compute()
         sim.step(sim.ctrl0)
 

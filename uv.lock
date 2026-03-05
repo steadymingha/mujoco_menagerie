@@ -442,6 +442,7 @@ dependencies = [
     { name = "matplotlib" },
     { name = "mujoco" },
     { name = "mujoco-python-viewer" },
+    { name = "numpy" },
     { name = "osqp" },
     { name = "scipy" },
 ]
@@ -451,6 +452,7 @@ requires-dist = [
     { name = "matplotlib", specifier = ">=3.10.7" },
     { name = "mujoco", specifier = ">=3.3.6" },
     { name = "mujoco-python-viewer", specifier = ">=0.1.4" },
+    { name = "numpy", specifier = ">=2.3.3" },
     { name = "osqp", specifier = ">=1.1.1" },
     { name = "scipy", specifier = ">=1.16.2" },
 ]

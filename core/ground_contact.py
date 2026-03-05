@@ -87,7 +87,9 @@ class ContactModel:
         t = data.time # current time
 
         phi, s_phi = self.get_current_phase(t)
-        
+        self.phi = phi
+        self.s_phi = s_phi
+
         denom_c = np.sqrt(var_c_sq * 2)
         denom_cbar = np.sqrt(var_cbar_sq * 2)
 

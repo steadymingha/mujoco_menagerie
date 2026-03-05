@@ -2,6 +2,7 @@ import numpy as np
 from scipy.special import erf
 import math
 from util import *
+from core.qp import BalanceQPSolver
 
 class JointController:
     """Joint-space PD controller for Go2.
@@ -59,6 +60,8 @@ class GaitController:
         self.pcom_d_prev = 0
         self.pcom_prev = 0
     # {FR, FL, BR, BL}
+
+        self.qp = BalanceQPSolver(mu=0.6, fz_min=10, fz_max=500)
     
     def weighting_factor(self, s_phi, phi):
         sigma_c0_sq = 0.1 # 0.05 ~ 0.2 var = sigma_c0_sq = sigma_c1_sq
@@ -164,7 +167,9 @@ class GaitController:
 
         return omegadot_b_d
     
-    def high_level_controller(self, model, data, p, s_phi, phi, yaw_d = 0): # p : estimation, q : sensor(gyro)
+    def high_level_controller(self, sim, p, s_phi, phi, yaw_d = 0): # p : estimation, q : sensor(gyro)
+        model = sim.model
+        data = sim.data
         pcom_d = self.predictive_support_polygon(p, s_phi, phi)
         pitch_d, roll_d = self.posture_adjustment(p)
         # yaw_d = 0 # user input
@@ -175,6 +180,9 @@ class GaitController:
         omegadotb_d = self.angular_acceleration_cmd(data, roll_d, pitch_d, dt)
 
         b_d = self.force_desired(model, data, p2dotcom_d, omegadotb_d)
+
+        S = np.diag([1, 1, 10, 5, 5, 5])
+        self.balance_pd_ctrl(pcom, p, s_phi, b_d, S)
     
     def force_desired(self, model, data, p2dotcom_d, omegadot_b_d):
         m = model.body_subtreemass[0]
@@ -209,8 +217,10 @@ class GaitController:
 
         return b_d
         
-    def balance_pd_ctrl(self):
-        pass
+    def balance_pd_ctrl(self, p_com, p_feet, contact, bd, S):
+        F, ok = self.qp.solve(p_com, p_feet, contact, bd, S)
+        print(f"Solved: {ok}")
+
 
 
     
