@@ -1,7 +1,7 @@
 import numpy as np
 from scipy.special import erf
 import math
-from util import *
+from core.util import *
 from core.qp import BalanceQPSolver
 
 class JointController:
@@ -57,8 +57,8 @@ class GaitController:
     def __init__(self):#, leg_position):
         # p = leg_position
 
-        self.pcom_d_prev = 0
-        self.pcom_prev = 0
+        self.pcom_d_prev = np.zeros(3)
+        self.pcom_prev = np.zeros(3)
     # {FR, FL, BR, BL}
 
         self.qp = BalanceQPSolver(mu=0.6, fz_min=10, fz_max=500)
@@ -96,8 +96,8 @@ class GaitController:
             Phi_i     = Phi[i]
             Phi_iminus = Phi[(i + 1) % len(p_4legs)]
             
-            xi_iminus = p_i * Phi + p_iminus * (1 - Phi)                   
-            xi_iplus = p_i * Phi + p_iplus * (1- Phi)
+            xi_iminus = p_i * Phi[i] + p_iminus * (1 - Phi[i])                   
+            xi_iplus = p_i * Phi[i] + p_iplus * (1- Phi[i])
 
             xi_i.append((Phi_i * p_i + Phi_iminus * xi_iminus + Phi_iplus * xi_iplus) / (Phi_i + Phi_iminus + Phi_iplus))
         
@@ -112,8 +112,8 @@ class GaitController:
         W = np.concatenate((np.ones((4, 1)), px, py) , axis=1)
         a = np.linalg.lstsq(W, pz, rcond=None)[0]
         
-        pitch_d = -np.arctan(a[1]) # Slope along the x-axis
-        roll_d = np.arctan(a[2])    # Slope along the y-axis
+        pitch_d = -np.arctan(a[1].item()) # Slope along the x-axis
+        roll_d = np.arctan(a[2].item())    # Slope along the y-axis
         
         return pitch_d, roll_d
 
@@ -127,7 +127,7 @@ class GaitController:
         Kp_p = 100.0
         Kd_p = 5.0
 
-        if self.pcom_d_prev == 0: 
+        if (self.pcom_d_prev == 0).all(): 
             self.pcom_d_prev = pcom_d
             self.pcom_prev = pcom
 
@@ -135,7 +135,7 @@ class GaitController:
         pdotcom = data.subtree_linvel[0] #(pcom - self.pcom_prev) / dt
 
 
-        p2dotcom_d = Kp_p * (pcom_d - p) + Kd_p * (pdotcom_d - pdotcom)
+        p2dotcom_d = Kp_p * (pcom_d - pcom) + Kd_p * (pdotcom_d - pdotcom)
         
         self.pcom_d_prev = pcom_d
         self.pcom_prev = pcom
@@ -163,32 +163,32 @@ class GaitController:
         omega_d = B @ eulerdot_d
 
         omega = data.sensor('gyro').data  # body frame 현재 각속도 [wx, wy, wz]
-        omegadot_b_d = Kp_w * self.SO3_logmap(R_d @ R.T) + kd_w * (omega_d - omega)
+        omegadot_b_d = Kp_w * SO3_logmap(R_d @ R.T) + kd_w * (omega_d - omega)
 
         return omegadot_b_d
     
     def high_level_controller(self, sim, p, s_phi, phi, yaw_d = 0): # p : estimation, q : sensor(gyro)
         model = sim.model
         data = sim.data
-        pcom_d = self.predictive_support_polygon(p, s_phi, phi)
+        pcom_d = self.predictive_support_polygon(p.T, s_phi, phi)
         pitch_d, roll_d = self.posture_adjustment(p)
         # yaw_d = 0 # user input
         dt = model.opt.timestep
         pcom = data.subtree_com[0]
 
-        p2dotcom_d = self.translational_acceleration_cmd(pcom_d, pcom, dt)
-        omegadotb_d = self.angular_acceleration_cmd(data, roll_d, pitch_d, dt)
+        p2dotcom_d = self.translational_acceleration_cmd(sim.data, pcom_d, pcom, dt)
+        omegadotb_d = self.angular_acceleration_cmd(sim.data, roll_d, pitch_d, dt)
 
-        b_d = self.force_desired(model, data, p2dotcom_d, omegadotb_d)
+        b_d = self.force_desired(sim, p2dotcom_d, omegadotb_d)
 
         S = np.diag([1, 1, 10, 5, 5, 5])
         self.balance_pd_ctrl(pcom, p, s_phi, b_d, S)
     
-    def force_desired(self, model, data, p2dotcom_d, omegadot_b_d):
-        m = model.body_subtreemass[0]
+    def force_desired(self, sim, p2dotcom_d, omegadot_b_d):
+        m = sim.model.body_subtreemass[0]
         g = np.array([0, 0, 9.8]).T
 
-        cinert_data = data.cinert[1]  # 인덱스 1이 보통 base body입니다.
+        cinert_data = sim.data.cinert[1]  # 인덱스 1이 보통 base body입니다.
 
         # 2. 3x3 회전 관성 행렬(Inertia Tensor) 성분 추출
         # 대각 성분 (Ixx, Iyy, Izz)
@@ -209,19 +209,29 @@ class GaitController:
         ])
 
         # 4. world frame → body frame 변환: I_body = R.T @ I_world @ R
-        q = data.sensor('orientation').data
+        q = sim.data.sensor('orientation').data
         R = quaternion_to_R(q)
         I_G = R.T @ I_G_world @ R
 
-        b_d = np.array([m * (p2dotcom_d + g), I_G @ omegadot_b_d]).T
+        b_d = np.concatenate([m * (p2dotcom_d + g), I_G @ omegadot_b_d])
 
         return b_d
         
     def balance_pd_ctrl(self, p_com, p_feet, contact, bd, S):
-        F, ok = self.qp.solve(p_com, p_feet, contact, bd, S)
-        print(f"Solved: {ok}")
+        F, ok = self.qp.solve(p_com, p_feet.T, contact, bd, S)
+        # if ok == True:
+        #     print(f"Solved: {ok}")
 
+        with open("./qp.txt", "a", encoding="utf-8") as f:
+            f.write(f"{ok}\n")
 
+            
+
+        #### p_feet format ####  3x4
+        #      | 발1 | 발2 | 발3| 발4
+        # 0행(x)| x1 ​| x2 ​| x3​ | x4​
+        # 1행(y)| y1 ​| y2 ​| y3​ | y4​
+        # 2행(z)| z1 | z2 ​| z3 ​| z4​
 
     
 

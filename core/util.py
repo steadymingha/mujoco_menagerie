@@ -1,6 +1,5 @@
 import numpy as np
 
-@staticmethod
 def euler123_to_R(roll, pitch, yaw):
     """Intrinsic 1-2-3 (XYZ): Rx → Ry → Rz"""
     cr, sr = np.cos(roll),  np.sin(roll)
@@ -18,7 +17,6 @@ def euler123_to_R(roll, pitch, yaw):
                     [ 0,   0, 1]])
     return Rx @ Ry @ Rz
 
-@staticmethod
 def SO3_logmap(R):
     """SO(3) log map: R → rotation vector (R³)"""
     cos_theta = np.clip((np.trace(R) - 1) / 2, -1.0, 1.0)
@@ -55,7 +53,6 @@ def quaternion_to_R(q):
 
     return R
 
-@staticmethod
 def euler123_jacobian(pitch, yaw):
     """Intrinsic 1-2-3 (XYZ): Euler 각속도 → body frame 각속도 변환 자코비안
     ω_body = B @ [roll_dot, pitch_dot, yaw_dot]
