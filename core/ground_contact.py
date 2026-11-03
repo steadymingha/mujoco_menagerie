@@ -6,8 +6,8 @@ import math
 class ContactModel:
     def __init__(self):
         self.kalman_param()
-        self.T = 3 #0.6 # gait period [sec]
-        self.THRESHOLD = 0.9
+        self.T = 1# 3 #0.6 # gait period [sec]
+        self.THRESHOLD = 0.667
         
         self.s_phi = 0
         self.phi = 0
@@ -80,9 +80,9 @@ class ContactModel:
     def prediction_prob_model(self, data): #prob_contact_given_state_subphase
         ## model parameter ##
         mean_cbar = np.array([0, 1]) # mu
-        var_cbar_sq = 2#0.05  # swing cbar 1 is better #sigma
+        var_cbar_sq = 0.05#2#0.05  # swing cbar 1 is better #sigma
         mean_c = np.array([0, 1])
-        var_c_sq = 0.2#0.05 # 0.3=1=9999  0.2 is best
+        var_c_sq = 0.05#0.2#0.05 # 0.3=1=9999  0.2 is best
         
         t = data.time # current time
 
@@ -93,11 +93,16 @@ class ContactModel:
         denom_c = np.sqrt(var_c_sq * 2)
         denom_cbar = np.sqrt(var_cbar_sq * 2)
 
+        ## claude debug
+        phi_st = phi / self.THRESHOLD                            # stance 진행도 0~1
+        phi_sw = (phi - self.THRESHOLD) / (1 - self.THRESHOLD)   # swing 진행도 0~1
+
+
         # Stance(1)
-        prob_stance = 0.5 * (erf((phi - mean_c[0]) / denom_c) + erf((mean_c[1] - phi) / denom_c))
+        prob_stance = 0.5 * (erf((phi_st - mean_c[0]) / denom_c) + erf((mean_c[1] - phi_st) / denom_c))
         
         # Swing(0)
-        prob_swing = 0.5 * (2 + erf((mean_cbar[0] - phi) / denom_cbar) + erf((phi - mean_cbar[1]) / denom_cbar))
+        prob_swing = 0.5 * (2 + erf((mean_cbar[0] - phi_sw) / denom_cbar) + erf((phi_sw - mean_cbar[1]) / denom_cbar))
 
         prior_p = s_phi * prob_stance + (1 - s_phi) * prob_swing
         

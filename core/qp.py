@@ -37,7 +37,7 @@ class BalanceQPSolver:
             'max_iter': max_iter,
             'eps_abs': eps_abs,
             'eps_rel': eps_rel,
-            'polish': True,
+            'polish': False,
             'adaptive_rho': True,
         }
 

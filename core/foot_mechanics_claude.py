@@ -133,32 +133,35 @@ class FootForce:
         self.y_pre = 0
         self.model = model
         self.M = np.zeros((model.nv, model.nv))
+        self._jacp = np.zeros((3, model.nv))
+        self._jacr = np.zeros((3, model.nv))
+
+        self.Jacobians = np.zeros((4, 3, 3))
     
     def get_foot_force_jacobian(self, data, leg_name='FL'):
         model = self.model
         site_name = f"{leg_name}_foot"
         site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, site_name)
 
-        jacp = np.zeros((3, model.nv))
-        jacr = np.zeros((3, model.nv))
-
-        mujoco.mj_jacSite(model, data, jacp, jacr, site_id)
+        mujoco.mj_jacSite(model, data, self._jacp, self._jacr, site_id)
 
         idx = LEG_INDICES[leg_name]
-        J_leg = jacp[:, idx]
+        J_leg = self._jacp[:, idx]
 
         return J_leg
 
     def torque_to_force(self, data, tau_d):
         foot_force_z = []
-        for leg_name in LEG_INDICES:
+        for i, leg_name in enumerate(LEG_INDICES):
             leg_idx = LEG_INDICES[leg_name]
             tau_d_1leg = tau_d[leg_idx]
-            J = self.get_foot_force_jacobian(data, leg_name)
-            foot_force = np.linalg.pinv(J.T) @ tau_d_1leg
+            self.J = self.get_foot_force_jacobian(data, leg_name)
+            self.Jacobians[i] = self.J
+            foot_force = np.linalg.pinv(self.J.T) @ tau_d_1leg
             foot_force_z.append(foot_force[-1])
 
         return np.vstack(foot_force_z)
+
 
     def get_foot_force(self, data):
         tau_d = self.get_disturbance_torque(data)

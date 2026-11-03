@@ -1,6 +1,7 @@
 import os
 os.environ['DISPLAY'] = ':0'
 import time
+import threading
 import numpy as np
 import mujoco
 import mujoco.viewer
@@ -10,9 +11,66 @@ import contextlib
 import argparse
 from datetime import datetime
 import mediapy as media
+from pynput import keyboard as pynput_kb
 from core.foot_mechanics_claude import *
 from core.ground_contact import ContactModel
 from graph import FootContactPlotter
+
+
+# --- Keyboard Teleoperation Controller ---
+class KeyboardController:
+    """Background pynput listener for robot teleoperation.
+
+    W/S : ±x linear velocity (world frame forward/back)
+    A/D : ±y linear velocity (world frame left/right)
+    Q/E : ±yaw rate
+    """
+    V_LIN = 0.3   # m/s
+    V_YAW = 0.5   # rad/s
+
+    def __init__(self):
+        self._keys: set = set()
+        self._lock = threading.Lock()
+        self._listener = pynput_kb.Listener(
+            on_press=self._on_press,
+            on_release=self._on_release,
+        )
+        self._listener.daemon = True
+        try:
+            self._listener.start()
+            print("[KeyboardController] W/S=fwd/back  A/D=left/right  Q/E=yaw")
+        except Exception as e:
+            print(f"Listener start failed: {e}")
+
+    def _on_press(self, key):
+        with self._lock:
+            self._keys.add(key)
+            print(f"pressed: {key}")
+
+    def _on_release(self, key):
+        with self._lock:
+            self._keys.discard(key)
+            print(f"pressed: {key}")
+
+    def get_commands(self):
+        """Returns (pdotcom_d: np.ndarray[3], yaw_rate_d: float)."""
+        with self._lock:
+            keys = set(self._keys)
+        Key = pynput_kb.Key
+        kc = pynput_kb.KeyCode.from_char
+        
+        vx, vy, yaw = 0.0, 0.0, 0.0
+        if Key.up in keys:    vx += self.V_LIN
+        if Key.down in keys:  vx -= self.V_LIN
+        if Key.left in keys:  vy += self.V_LIN
+        if Key.right in keys: vy -= self.V_LIN
+        if kc(',')   in keys: yaw += self.V_YAW
+        if kc('.')   in keys: yaw -= self.V_YAW
+        return np.array([vx, vy, 0.0]), yaw
+
+    def stop(self):
+        self._listener.stop()
+
 
 # --- Simulator Wrapper ---
 class Go2Sim:
@@ -61,10 +119,28 @@ class Go2Sim:
             viewer.opt.geomgroup[3] = 1 
             yield viewer 
 
+    def clear_overlay(self, viewer):
+        if viewer and viewer.user_scn:
+            viewer.user_scn.ngeom = 0
+
+    def add_sphere(self, viewer, pos, radius=0.05, rgba=None):
+        if rgba is None:
+            rgba = np.array([1.0, 0.0, 0.0, 0.8])
+        if viewer and viewer.user_scn and viewer.user_scn.ngeom < viewer.user_scn.maxgeom:
+            geom = viewer.user_scn.geoms[viewer.user_scn.ngeom]
+            mujoco.mjv_initGeom(
+                geom,
+                mujoco.mjtGeom.mjGEOM_SPHERE,
+                np.array([radius, radius, radius]),
+                np.array(pos, dtype=np.float64),
+                np.eye(3).flatten(),
+                np.array(rgba, dtype=np.float64)
+            )
+            viewer.user_scn.ngeom += 1
+
     def add_text(self, viewer, contents):
         data = self.data
         if viewer.user_scn:
-                viewer.user_scn.ngeom = 0 
                 if viewer.user_scn.ngeom < viewer.user_scn.maxgeom:
                     geom = viewer.user_scn.geoms[viewer.user_scn.ngeom]
                     text_pos = np.array([data.qpos[0], data.qpos[1], data.qpos[2] + 0.5])
@@ -104,7 +180,7 @@ class Go2Sim:
             self.data.ctrl[:] = self.ctrl0 
         
         # Apply automated lift before stepping
-        self.apply_automated_lift(self.data)
+        # self.apply_automated_lift(self.data)
         
         mujoco.mj_step(self.model, self.data)
         
@@ -155,7 +231,7 @@ def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='MuJoCo Go2 Robot Simulation')
     parser.add_argument('--headless', action='store_true',
-                        help='Run simulation without viewer (headless mode)', default=True)
+                        help='Run simulation without viewer (headless mode)', default=False)
     parser.add_argument('--record', type=str, default="output.mp4",
                         help='Record video to specified file (e.g., output.mp4). If not specified, no recording.')
     args = parser.parse_args()

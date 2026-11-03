@@ -22,20 +22,21 @@ def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='MuJoCo Go2 Robot Simulation')
     parser.add_argument('--headless', action='store_true',
-                        help='Run simulation without viewer (headless mode)', default=True)
-    parser.add_argument('--record', type=str, default="output.mp4",
+                        help='Run simulation without viewer (headless mode)', default=False)
+    parser.add_argument('--record', type=str, default=None,#"output.mp4",
                         help='Record video to specified file (e.g., output.mp4). If not specified, no recording.')
     args = parser.parse_args()
 
     model_file = './unitree_go2/scene_mjx.xml'
     sim = Go2Sim(model_file)
 
-    ff = FootForce(sim.model)
-    fh = FootHeight()
-    cm = ContactModel()
+    ff = FootForce(sim.model)   #
+    fh = FootHeight()   #
+    cm = ContactModel() # leg contact detection
 
     gait = GaitController()
     ctrl = JointController(sim)
+    user_input = KeyboardController()
 
 
 
@@ -79,15 +80,32 @@ def main():
             next_frame_time += frame_interval
 
         # --- [C] Controller ---
-
-        gait.high_level_controller(sim, fh.get_foot_position(), cm.s_phi, cm.phi )
+        pdotcomb_d, yaw_dot = user_input.get_commands()
+        pcom_d, pcom, tq_d = gait.balance_controller(
+            sim, 
+            fh.get_foot_position(), 
+            p_foot_contact.ravel(), 
+            cm.phi, 
+            ff.Jacobians, 
+            pdotcomb_d, 
+            yaw_dot)
 
         ctrl.compute()
+
         sim.step(sim.ctrl0)
 
-        # Viewer-specific: display debug text
+        # Viewer-specific: display debug markers and text
         if viewer:
-            debug_txt = f"T:{sim.sim_time:.1f}s | GT(FL):{ground_truth[0]} | Prob(FL):{p_foot_contact[0].item():.2f}"
+            sim.clear_overlay(viewer)
+            # Green sphere: desired CoM position (pcom_d)
+            sim.add_sphere(viewer, pcom_d, radius=0.05, rgba=[0.0, 1.0, 0.0, 0.8])
+            # Red sphere: actual CoM position (pcom)
+            sim.add_sphere(viewer, pcom, radius=0.04, rgba=[1.0, 0.2, 0.2, 0.8])
+            debug_txt = (
+                f"T:{sim.sim_time:.1f}s | "
+                f"pcom_d:({pcom_d[0]:.2f},{pcom_d[1]:.2f},{pcom_d[2]:.2f}) | "
+                f"pcom:({pcom[0]:.2f},{pcom[1]:.2f},{pcom[2]:.2f})"
+            )
             sim.add_text(viewer, debug_txt)
 
         sim.sync(viewer)
@@ -100,6 +118,8 @@ def main():
         with sim.launch_viewer() as viewer:
             while viewer.is_running() and sim.sim_time < SIMUL_TIME:
                 run_step(viewer)
+
+    user_input.stop()
 
     # Save plot after simulation ends
     print(f"\nSimulation completed at t={sim.sim_time:.2f}s")
