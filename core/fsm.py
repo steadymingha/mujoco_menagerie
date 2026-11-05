@@ -104,7 +104,7 @@ class ContactFSM:
 class QuadrupedContactFSM:
     """4족 로봇 전체 다리의 contact FSM 관리"""
 
-    LEG_NAMES = ["FR", "FL", "RR", "RL"]
+    LEG_NAMES = ["FL", "FR", "RL", "RR"]  # ContactModel / control.py 와 동일한 순서
 
     def __init__(self, t_c_bar: float = 0.0, t_c: float = 0.0, t_0: float = 0.0):
         self.legs = {

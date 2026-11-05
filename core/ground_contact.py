@@ -64,7 +64,8 @@ class ContactModel:
         return p_foot_contact_clip
     
     # LEGS = ['front_left', 'front_right', 'hind_left', 'hind_right']
-    def get_current_phase(self, t):
+    
+    def get_current_phase(self, t): # Gait Scheduler Phase
         phi0 = (t % self.T) / self.T # [0,1)
         offset = 0.5
         phi0_offset = (phi0 + offset) % 1.0
